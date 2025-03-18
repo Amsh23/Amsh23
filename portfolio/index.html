@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Projects | Amir</title>
+
+    <!-- Custom Styles -->
+    <style>
+        /* Reset default browser styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Gradient background with animation */
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: #fff;
+            line-height: 1.6;
+            direction: ltr;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Header with text animation */
+        .header {
+            text-align: center;
+            padding: 5rem 2rem;
+            background: rgba(0, 0, 0, 0.4);
+            border-bottom: 2px solid #00b894;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            position: relative;
+        }
+        .header h1 {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+            animation: glow 2s ease-in-out infinite;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        .header p {
+            font-size: 1.2rem;
+            font-weight: 300;
+            color: #aaa;
+        }
+
+        /* Moving icon */
+        .moving-icon {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 2rem;
+            animation: moveIcon 5s linear infinite;
+        }
+
+        @keyframes moveIcon {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(20px); }
+            100% { transform: translateX(0); }
+        }
+
+        /* Project cards */
+        .projects-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 3rem;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .project-card {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 2rem;
+            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        .project-card:hover {
+            transform: translateY(-15px) scale(1.05);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+        }
+        .project-card h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #00b894;
+        }
+        .project-card ul {
+            list-style-type: none;
+            margin-bottom: 1.5rem;
+        }
+        .project-card ul li {
+            margin: 0.5rem 0;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 1rem 2rem;
+            margin: 1rem 0;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            text-align: center;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        }
+        .demo-btn:hover {
+            background: #00cec9;
+            border: 2px solid #00b894;
+        }
+
+        /* CSS Animations */
+        @keyframes glow {
+            0%, 100% { text-shadow: 0 0 15px #00b894, 0 0 30px #00cec9; }
+            50% { text-shadow: 0 0 25px #00b894, 0 0 50px #00cec9; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 3rem;
+            }
+            .projects-container {
+                grid-template-columns: 1fr;
+            }
+            .project-card {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Section -->
+    <header class="header">
+        <h1>🚀 My Projects</h1>
+        <p>Designed and developed by Amir</p>
+        <div class="moving-icon">✨</div>
+    </header>
+
+    <!-- Projects Section -->
+    <main>
+        <div class="projects-container">
+            <!-- Portfolio Card -->
+            <article class="project-card" style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                <h2>🎨 Personal Portfolio</h2>
+            </article>
+
+            <!-- Chatbox Card -->
+            <article class="project-card">
+                <h2>💬 Live Chatbox</h2>
+                <p>Real-time chat system with technologies:</p>
+                <ul>
+                    <li>⚡️ WebSocket</li>
+                    <li>🚀 Node.js</li>
+                    <li>📡 Two-way communication</li>
+                    <li>☁️ Hosted on Render</li>
+                </ul>
+                <a href="https://real-time-chatbox.onrender.com/" class="btn demo-btn">Enter Chat</a>
+            </article>
+
+            <!-- Telegram Bot Card -->
+            <article class="project-card">
+                <h2>🤖 Smart Telegram Bot</h2>
+                <p>Under development with features:</p>
+                <ul>
+                    <li>🎥 YouTube Downloader</li>
+                    <li>🧠 ChatGPT AI</li>
+                    <li>🎙 Voice to Text</li>
+                    <li>📤 Auto-post to Reddit</li>
+                </ul>
+                <p>and more...</p>
+                <button class="btn" disabled>Coming Soon...</button>
+            </article>
+        </div>
+    </main>
+</body>
+</html>

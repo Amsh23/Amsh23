@@ -1,0 +1,15 @@
+python-dotenv
+praw
+schedule
+nest_asyncio
+gtts
+python-telegram-bot
+SpeechRecognition
+googletrans
+requests
+aiohttp
+urllib3
+tornado==6.2.0
+httpx==0.25.0
+argos-translate
+argostranslate
