@@ -22,8 +22,8 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# VPN Configuration (contains sensitive data)
-.vpn_config.json
+# VPN Config (contains sensitive credentials)
+vpn_config.json
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

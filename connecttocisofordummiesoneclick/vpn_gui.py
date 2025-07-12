@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """
 Cisco AnyConnect VPN GUI Application
-A simple Tkinter application to connect to various VPN servers using Cisco AnyConnect GUI.
+A simple Tkinter application to connect to various VPN servers using Cisco AnyConnect CLI.
 """
 
 import tkinter as tk
-from tkinter import messagebox, ttk, simpledialog
+from tkinter import messagebox, ttk
 import subprocess
 import threading
 import time
 import os
-import json
-import base64
-from cryptography.fernet import Fernet
-import getpass
 
 
 class VPNConnector:
@@ -23,8 +19,11 @@ class VPNConnector:
         self.root.geometry("500x400")
         self.root.resizable(True, True)
         
-        # Configuration file path
-        self.config_file = os.path.join(os.path.expanduser("~"), ".vpn_config.json")
+        # VPN Configuration
+        self.config_path = os.path.join(os.path.dirname(__file__), "vpn_config.json")
+        self.username = None
+        self.password = None
+        self.load_credentials()
         
         # VPN Paths
         self.vpn_gui_path = r"C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnui.exe"
@@ -40,10 +39,56 @@ class VPNConnector:
             "France": "France.ipbama.com"
         }
         
-        # Load or setup credentials
-        self.username, self.password = self.load_or_setup_credentials()
-        
         self.setup_ui()
+        if not self.username or not self.password:
+            self.show_credentials_form()
+    def load_credentials(self):
+        """Load credentials from config file if exists"""
+        import json
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.username = data.get("username")
+                    self.password = data.get("password")
+            except Exception:
+                self.username = None
+                self.password = None
+
+    def save_credentials(self, username, password):
+        """Save credentials to config file"""
+        import json
+        self.username = username
+        self.password = password
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump({"username": username, "password": password}, f)
+
+    def show_credentials_form(self):
+        """Show a simple form to enter credentials"""
+        cred_win = tk.Toplevel(self.root)
+        cred_win.title("Set VPN Credentials")
+        cred_win.geometry("300x180")
+        cred_win.grab_set()
+
+        tk.Label(cred_win, text="Enter your VPN username:").pack(pady=(20,5))
+        username_entry = tk.Entry(cred_win)
+        username_entry.pack(pady=5)
+
+        tk.Label(cred_win, text="Enter your VPN password:").pack(pady=5)
+        password_entry = tk.Entry(cred_win, show="*")
+        password_entry.pack(pady=5)
+
+        def save_and_close():
+            user = username_entry.get().strip()
+            pwd = password_entry.get().strip()
+            if not user or not pwd:
+                messagebox.showerror("Error", "Username and password cannot be empty!")
+                return
+            self.save_credentials(user, pwd)
+            cred_win.destroy()
+            self.update_status("Credentials saved successfully.")
+
+        tk.Button(cred_win, text="Save", command=save_and_close).pack(pady=15)
         
     def setup_ui(self):
         """Setup the user interface"""
@@ -139,14 +184,6 @@ class VPNConnector:
         )
         clear_btn.grid(row=0, column=1, padx=5)
         
-        # Settings button
-        settings_btn = ttk.Button(
-            control_frame,
-            text="Reset Credentials",
-            command=self.reset_credentials
-        )
-        settings_btn.grid(row=0, column=2, padx=5)
-        
         # Initial status message
         self.update_status("Ready to connect. Select a VPN server above.")
     
@@ -202,17 +239,12 @@ class VPNConnector:
             )
             
             self.update_status("✅ Cisco AnyConnect opened successfully!")
-            self.update_status("Please complete the connection in the AnyConnect window:")
+            self.update_status("Please complete the connection in the AnyConnect window.")
             self.update_status(f"  • Server: {server_url}")
-            self.update_status(f"  • Username: {self.username}")
-            self.update_status(f"  • Password: {self.password}")
-            
             messagebox.showinfo(
                 "AnyConnect Opened", 
                 f"Cisco AnyConnect has been opened for {server_name}!\n\n"
-                f"Server: {server_url}\n"
-                f"Username: {self.username}\n"
-                f"Password: {self.password}\n\n"
+                f"Server: {server_url}\n\n"
                 "Please complete the connection in the AnyConnect window."
             )
                 
@@ -253,181 +285,6 @@ class VPNConnector:
     def run(self):
         """Start the GUI application"""
         self.root.mainloop()
-
-
-    def generate_key(self):
-        """Generate a key for encryption based on machine info"""
-        import platform
-        machine_info = f"{platform.node()}{platform.machine()}{platform.processor()}"
-        key = base64.urlsafe_b64encode(machine_info.encode()[:32].ljust(32, b'0'))
-        return key
-    
-    def encrypt_data(self, data):
-        """Encrypt sensitive data"""
-        try:
-            key = self.generate_key()
-            f = Fernet(key)
-            return f.encrypt(data.encode()).decode()
-        except Exception:
-            # Fallback to simple base64 encoding if encryption fails
-            return base64.b64encode(data.encode()).decode()
-    
-    def decrypt_data(self, encrypted_data):
-        """Decrypt sensitive data"""
-        try:
-            key = self.generate_key()
-            f = Fernet(key)
-            return f.decrypt(encrypted_data.encode()).decode()
-        except Exception:
-            # Fallback to base64 decoding
-            try:
-                return base64.b64decode(encrypted_data.encode()).decode()
-            except Exception:
-                return ""
-    
-    def save_credentials(self, username, password):
-        """Save encrypted credentials to config file"""
-        try:
-            config = {
-                "username": self.encrypt_data(username),
-                "password": self.encrypt_data(password),
-                "setup_complete": True
-            }
-            with open(self.config_file, 'w') as f:
-                json.dump(config, f)
-            return True
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save credentials: {str(e)}")
-            return False
-    
-    def load_credentials(self):
-        """Load and decrypt credentials from config file"""
-        try:
-            if not os.path.exists(self.config_file):
-                return None, None
-                
-            with open(self.config_file, 'r') as f:
-                config = json.load(f)
-            
-            if not config.get("setup_complete", False):
-                return None, None
-                
-            username = self.decrypt_data(config["username"])
-            password = self.decrypt_data(config["password"])
-            return username, password
-        except Exception:
-            return None, None
-    
-    def load_or_setup_credentials(self):
-        """Load existing credentials or prompt user to set them up"""
-        # Try to load existing credentials
-        username, password = self.load_credentials()
-        
-        if username and password:
-            return username, password
-        
-        # If no credentials found, show setup dialog
-        return self.show_credentials_setup()
-    
-    def show_credentials_setup(self):
-        """Show dialog for first-time credential setup"""
-        setup_window = tk.Toplevel(self.root)
-        setup_window.title("VPN Credentials Setup")
-        setup_window.geometry("400x300")
-        setup_window.resizable(False, False)
-        setup_window.grab_set()  # Make it modal
-        
-        # Center the window
-        setup_window.transient(self.root)
-        setup_window.geometry("+%d+%d" % (
-            self.root.winfo_rootx() + 50,
-            self.root.winfo_rooty() + 50
-        ))
-        
-        # Variables to store credentials
-        username_var = tk.StringVar()
-        password_var = tk.StringVar()
-        result = {"username": "", "password": ""}
-        
-        # Title
-        title_label = ttk.Label(
-            setup_window, 
-            text="VPN Credentials Setup", 
-            font=("Arial", 14, "bold")
-        )
-        title_label.pack(pady=20)
-        
-        # Instructions
-        instruction_label = ttk.Label(
-            setup_window,
-            text="Please enter your VPN credentials.\nThese will be securely saved for future use.",
-            justify=tk.CENTER
-        )
-        instruction_label.pack(pady=10)
-        
-        # Form frame
-        form_frame = ttk.Frame(setup_window)
-        form_frame.pack(pady=20, padx=40, fill=tk.X)
-        
-        # Username
-        ttk.Label(form_frame, text="Username:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        username_entry = ttk.Entry(form_frame, textvariable=username_var, width=25)
-        username_entry.grid(row=0, column=1, pady=5, padx=10)
-        username_entry.focus()
-        
-        # Password
-        ttk.Label(form_frame, text="Password:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        password_entry = ttk.Entry(form_frame, textvariable=password_var, show="*", width=25)
-        password_entry.grid(row=1, column=1, pady=5, padx=10)
-        
-        # Buttons frame
-        button_frame = ttk.Frame(setup_window)
-        button_frame.pack(pady=20)
-        
-        def save_and_close():
-            username = username_var.get().strip()
-            password = password_var.get().strip()
-            
-            if not username or not password:
-                messagebox.showerror("Error", "Please enter both username and password.")
-                return
-            
-            if self.save_credentials(username, password):
-                result["username"] = username
-                result["password"] = password
-                setup_window.destroy()
-            
-        def cancel_setup():
-            setup_window.destroy()
-            self.root.quit()  # Exit the application
-        
-        save_btn = ttk.Button(button_frame, text="Save & Continue", command=save_and_close)
-        save_btn.pack(side=tk.LEFT, padx=10)
-        
-        cancel_btn = ttk.Button(button_frame, text="Cancel", command=cancel_setup)
-        cancel_btn.pack(side=tk.LEFT, padx=10)
-        
-        # Handle Enter key
-        def handle_enter(event):
-            save_and_close()
-        
-        username_entry.bind('<Return>', handle_enter)
-        password_entry.bind('<Return>', handle_enter)
-        
-        # Wait for window to close
-        self.root.wait_window(setup_window)
-        
-        return result["username"], result["password"]
-    
-    def reset_credentials(self):
-        """Reset saved credentials"""
-        try:
-            if os.path.exists(self.config_file):
-                os.remove(self.config_file)
-            messagebox.showinfo("Reset Complete", "Credentials have been reset. Please restart the application.")
-            self.root.quit()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to reset credentials: {str(e)}")
 
 
 def main():

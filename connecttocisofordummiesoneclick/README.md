@@ -13,7 +13,7 @@ A simple Python GUI application that opens Cisco AnyConnect with pre-configured 
   - Canada: Canada.ipbama.com
   - France: France.ipbama.com
 - Opens Cisco AnyConnect GUI automatically with server pre-filled
-- Shows login credentials for easy copy-paste
+- Secure credential storage (enter once, use forever)
 - Perfect for non-technical users
 - Buildable as Windows executable
 
@@ -21,7 +21,7 @@ A simple Python GUI application that opens Cisco AnyConnect with pre-configured 
 
 1. Click a server button in the GUI
 2. Cisco AnyConnect opens automatically with the server URL pre-filled
-3. Enter your credentials in AnyConnect (saved from first-time setup)
+3. Enter your VPN credentials in AnyConnect (first time setup will prompt for these)
 4. Click Connect in AnyConnect
 
 ## Requirements
@@ -60,29 +60,30 @@ The executable will be created in the `dist` folder.
 
 ## Configuration
 
-The VPN servers can be configured in the `VPNConnector` class:
+The VPN servers are pre-configured. Your credentials will be securely saved after first use.
+
+For first-time setup:
+1. Run the application
+2. Enter your VPN username and password when prompted
+3. Credentials are saved locally and encrypted
+4. Future connections will use saved credentials automatically
 
 ```python
-# VPN Servers
+# VPN Servers (pre-configured)
 self.vpn_servers = {
     "London": "London.ipbama.com",
     "Dubai": "Dubai.ipbama.com", 
-    # ... add more servers here
+    # ... other servers
 }
 ```
 
-**Credentials Setup:**
-- On first run, the application will ask you to enter your VPN username and password
-- These are securely saved and encrypted locally
-- You only need to enter them once
-
-To modify servers, edit the values in the `vpn_gui.py` file.
+To modify servers, edit the `vpn_servers` dictionary in the `vpn_gui.py` file.
 
 ## How it works
 
 1. The application opens Cisco AnyConnect GUI automatically when you click a server button
 2. The server URL is pre-filled in AnyConnect
-3. You just need to enter your credentials and click Connect
+3. You just need to enter your VPN credentials (first time only)
 4. Perfect for non-technical users who want easy VPN access
 5. No command-line knowledge required
 
