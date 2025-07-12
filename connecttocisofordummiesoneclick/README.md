@@ -21,9 +21,7 @@ A simple Python GUI application that opens Cisco AnyConnect with pre-configured 
 
 1. Click a server button in the GUI
 2. Cisco AnyConnect opens automatically with the server URL pre-filled
-3. Enter your credentials in AnyConnect:
-   - Username: amir1382AT
-   - Password: amir1382AT
+3. Enter your credentials in AnyConnect (saved from first-time setup)
 4. Click Connect in AnyConnect
 
 ## Requirements
@@ -62,7 +60,7 @@ The executable will be created in the `dist` folder.
 
 ## Configuration
 
-The VPN servers and credentials are configured in the `VPNConnector` class:
+The VPN servers can be configured in the `VPNConnector` class:
 
 ```python
 # VPN Servers
@@ -71,13 +69,14 @@ self.vpn_servers = {
     "Dubai": "Dubai.ipbama.com", 
     # ... add more servers here
 }
-
-# Credentials
-self.username = "amir1382AT"
-self.password = "amir1382AT"
 ```
 
-To modify servers or credentials, edit these values in the `vpn_gui.py` file.
+**Credentials Setup:**
+- On first run, the application will ask you to enter your VPN username and password
+- These are securely saved and encrypted locally
+- You only need to enter them once
+
+To modify servers, edit the values in the `vpn_gui.py` file.
 
 ## How it works
 

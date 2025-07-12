@@ -1,8 +1,6 @@
 # Requirements for Cisco AnyConnect VPN GUI
-# No external dependencies required - uses only Python standard library
-# tkinter - GUI framework (included with Python)
-# subprocess - for running CLI commands (included with Python)
-# threading - for non-blocking operations (included with Python)
+# For secure credential storage
+cryptography>=3.0
 
 # For building executable
 pyinstaller>=5.0
