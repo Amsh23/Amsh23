@@ -1,0 +1,113 @@
+; vpnva-6.inf
+;
+; Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows Setup File
+;
+; (c) Copyright 2004-2014 Cisco Systems, Inc.
+
+[version]
+Signature   = "$Windows NT$"
+Class       = Net
+ClassGUID   = {4d36e972-e325-11ce-bfc1-08002be10318}
+Provider    = %Cisco%
+CatalogFile = vpnva-6.cat
+DriverVer   = 02/26/2014,3.1.6019.0
+
+[Manufacturer]
+%CISCO%		= Cisco, NTamd64
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Cisco]
+%vpnva.DeviceDesc%    = Cisco.ndi.NTx86, vpnva
+
+[Cisco.NTamd64]
+%vpnva.DeviceDesc64%  = Cisco.ndi.NTamd64, vpnva
+
+[Cisco.ndi.NTx86]
+Characteristics = 0x01 ; NCF_VIRTUAL
+;BusType not required because this is not NCF_PHYSICAL
+*IfType         = 6             ; IF_TYPE_ETHERNET_CSMACD
+*MediaType      = 0             ; NdisMedium802_3
+*PhysicalMediaType = 0          ; NdisPhysicalMediumUnspecified
+AddReg			= Cisco.reg
+CopyFiles		= Cisco.CopyFiles
+
+[Cisco.ndi.NTamd64]
+Characteristics = 0x01 ; NCF_VIRTUAL
+;BusType not required because this is not NCF_PHYSICAL
+*IfType         = 6             ; IF_TYPE_ETHERNET_CSMACD
+*MediaType      = 0             ; NdisMedium802_3
+*PhysicalMediaType = 0          ; NdisPhysicalMediumUnspecified
+AddReg			= Cisco.reg
+CopyFiles		= Cisco.CopyFiles.NTamd64
+
+[Cisco.reg]
+HKR, Ndi,               Service,    0,  "vpnva"
+HKR, Ndi\Interfaces,    DefUpper,   0,  "ndis5"
+HKR, Ndi\Interfaces,    DefLower,   0,  "ethernet"
+HKR, Ndi\Interfaces,    UpperRange, 0,  "ndis5"
+HKR, Ndi\Interfaces,    LowerRange, 0,  "ethernet"
+
+[Cisco.ndi.NTx86.Services]
+AddService = vpnva, 2, vpnva.Service.NTx86
+
+[Cisco.ndi.NTamd64.Services]
+AddService = vpnva, 2, vpnva.Service.NTamd64
+
+[vpnva.Service.NTx86]
+DisplayName    = %VPNVA_Desc%
+ServiceType    = 1 ;SERVICE_KERNEL_DRIVER
+StartType      = 3 ;SERVICE_DEMAND_START
+ErrorControl   = 1 ;SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\vpnva-6.sys
+LoadOrderGroup = NDIS
+
+[vpnva.Service.NTamd64]
+DisplayName    = %VPNVA64_Desc%
+ServiceType    = 1 ;SERVICE_KERNEL_DRIVER
+StartType      = 3 ;SERVICE_DEMAND_START
+ErrorControl   = 1 ;SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\vpnva64-6.sys
+LoadOrderGroup = NDIS
+
+[Cisco.CopyFiles]
+vpnva-6.sys,,,2
+
+[Cisco.CopyFiles.NTamd64]
+vpnva64-6.sys,,,2
+
+[SourceDisksNames]
+;
+; diskid = description[, [tagfile] [, <unused>, subdir]]
+;
+1 = %AnyConnect%,,,
+
+[SourceDisksFiles]
+;
+; filename_on_source = diskID[, [subdir][, size]]
+;
+vpnva-6.sys = 1,, ; on distribution disk 1
+vpnva64-6.sys = 1,, ; on distribution disk 1
+
+;-------------------------------------------------------------------------------
+; DestinationDirs
+;
+
+[DestinationDirs]
+Cisco.CopyFiles = 12
+Cisco.CopyFiles.NTamd64 = 12
+
+
+;-------------------------------------------------------------------------------
+; Localizable Strings
+;
+[Strings]
+Cisco                = "Cisco Systems"
+AnyConnect           = "Cisco AnyConnect Secure Mobility Client"
+
+VPNVA_Desc           = "Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows"
+vpnva.DeviceDesc     = "Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows"
+
+VPNVA64_Desc         = "Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows x64"
+vpnva.DeviceDesc64   = "Cisco AnyConnect Secure Mobility Client Virtual Miniport Adapter for Windows x64"

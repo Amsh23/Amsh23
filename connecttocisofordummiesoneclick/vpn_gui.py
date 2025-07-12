@@ -23,6 +23,9 @@ class VPNConnector:
         self.username = "amir1382AT"
         self.password = "amir1382AT"
         
+        # VPN CLI Path
+        self.vpn_cli_path = r"C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpncli.exe"
+        
         # VPN Servers
         self.vpn_servers = {
             "London": "London.ipbama.com",
@@ -183,9 +186,8 @@ class VPNConnector:
             
             # Start the VPN process
             self.update_status("Starting AnyConnect CLI...")
-            
             process = subprocess.Popen(
-                ["vpn", "-s"],
+                [self.vpn_cli_path, "-s"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -284,8 +286,12 @@ class VPNConnector:
     def _check_vpn_cli(self):
         """Check if VPN CLI is available"""
         try:
+            # Check if the file exists first
+            if not os.path.exists(self.vpn_cli_path):
+                return False
+                
             subprocess.run(
-                ["vpn", "--help"], 
+                [self.vpn_cli_path, "--help"], 
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
                 timeout=5,

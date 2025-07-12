@@ -1,0 +1,80 @@
+;;; acsock64.inf
+;;;
+;;; Cisco AnyConnect Kernel Driver Framework Socket Layer Interceptor
+;;;
+;;; Copyright (c) 2004-2016 Cisco Systems, Inc. 
+;;;
+;;; Abstract:
+;;; Callout sample driver install configuration.
+;;;
+
+[Version]
+signature   =   "$Windows NT$"
+Provider    =   %Cisco%
+DriverVer   =   05/31/2017,4.5.00051
+Class       =   CiscoNetworkFilter
+ClassGuid   =   {729021b6-d014-47b0-8a6a-d2c45f77af4f}  
+CatalogFile =   acsock64.cat
+
+[SourceDisksNames]
+1 = %DiskId1%,,,
+
+[SourceDisksFiles.amd64]
+acsock64.sys = 1,,
+
+[DestinationDirs]
+DefaultDestDir      = 12
+Inspect.DriverFiles = 12    ;%windir%\system32\drivers
+
+;
+; Copy Files
+;
+
+[Inspect.DriverFiles]
+acsock64.sys,,,0x00000004   ; COPYFLG_NOVERSIONCHECK
+
+;;
+;; Default install sections
+;;
+
+[DefaultInstall.ntamd64]
+OptionDesc          = %InspectServiceDesc%
+CopyFiles           = Inspect.DriverFiles
+
+[DefaultInstall.ntamd64.Services]
+AddService          = %InspectServiceName%,,Inspect.Service
+
+;;
+;; Default uninstall sections
+;;
+
+[DefaultUninstall.ntamd64]
+DelFiles   = Inspect.DriverFiles
+
+[DefaultUninstall.ntamd64.Services]
+DelService = acsock,0x200		; Flags note to stop service first
+
+;
+; Services Section
+;
+
+[Inspect.Service]
+DisplayName      = %InspectServiceName%
+Description      = %InspectServiceDesc%
+ServiceBinary    = %12%\acsock64.sys  	;%windir%\system32\drivers\acsock64.sys
+ServiceType      = 1					;SERVICE_KERNEL_DRIVER
+StartType        = 3					;SERVICE_DEMAND_START
+ErrorControl     = 1					;SERVICE_ERROR_NORMAL
+
+;;
+;; String Section
+;;
+
+[Strings]
+Cisco               = "Cisco Systems"
+InspectServiceDesc  = "Cisco AnyConnect Kernel Driver Framework Socket Layer Interceptor"
+InspectServiceName  = "acsock"
+InspectRegistry     = "system\currentcontrolset\services\acsock"
+DiskId1             = "acsock Device Installation Disk"
+
+

@@ -1,0 +1,10 @@
+{
+      "downloader" : {
+                     "display-name" : "AnyConnect Downloader",
+                     "type" :         "exe",
+                     "uri" :          "binaries/vpndownloader.exe",
+                     "hash" :         "70C65E42CDE57CF6B84CCDACE8F265960F0F3DD1CDE0F3B6912C700ED2A095A5",
+                     "hash-type" :    "sha256",
+                     "version" :      "4.5.03040"
+                     }
+}
