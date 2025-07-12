@@ -23,7 +23,8 @@ class VPNConnector:
         self.username = "amir1382AT"
         self.password = "amir1382AT"
         
-        # VPN CLI Path
+        # VPN Paths
+        self.vpn_gui_path = r"C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnui.exe"
         self.vpn_cli_path = r"C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpncli.exe"
         
         # VPN Servers
@@ -164,142 +165,76 @@ class VPNConnector:
         thread.start()
     
     def _connect_vpn_thread(self, server_name, server_url):
-        """Actual VPN connection logic running in separate thread"""
+        """Connect to VPN by opening Cisco AnyConnect GUI with server URL"""
         try:
-            # Check if vpn command is available
-            if not self._check_vpn_cli():
-                self.update_status("ERROR: Cisco AnyConnect CLI 'vpn' command not found!")
+            # Check if Cisco AnyConnect GUI is available
+            if not os.path.exists(self.vpn_gui_path):
+                self.update_status("ERROR: Cisco AnyConnect GUI not found!")
                 messagebox.showerror(
-                    "VPN CLI Not Found", 
-                    "Cisco AnyConnect CLI 'vpn' command not found!\n\n"
-                    "Please ensure Cisco AnyConnect is installed and the CLI is available in PATH."
+                    "VPN GUI Not Found", 
+                    f"Cisco AnyConnect GUI not found at:\n{self.vpn_gui_path}\n\n"
+                    "Please ensure Cisco AnyConnect is installed properly."
                 )
                 return
             
-            # Prepare the connection commands
-            commands = [
-                f"connect {server_url}",
-                self.username,
-                self.password,
-                "y"  # Accept certificate if prompted
-            ]
+            self.update_status(f"Opening Cisco AnyConnect for {server_name}...")
+            self.update_status(f"Server URL: {server_url}")
             
-            # Start the VPN process
-            self.update_status("Starting AnyConnect CLI...")
-            process = subprocess.Popen(
-                [self.vpn_cli_path, "-s"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+            # Open Cisco AnyConnect GUI with the server URL
+            # This will open AnyConnect and pre-fill the server address
+            subprocess.Popen(
+                [self.vpn_gui_path, "-url", server_url],
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
-            # Send commands to the process
-            input_data = "\n".join(commands) + "\n"
-            self.update_status("Sending connection credentials...")
+            self.update_status("✅ Cisco AnyConnect opened successfully!")
+            self.update_status("Please complete the connection in the AnyConnect window:")
+            self.update_status(f"  • Server: {server_url}")
+            self.update_status(f"  • Username: {self.username}")
+            self.update_status(f"  • Password: {self.password}")
             
-            try:
-                stdout, stderr = process.communicate(input=input_data, timeout=30)
-                
-                # Process the output
-                if process.returncode == 0:
-                    self.update_status(f"Successfully connected to {server_name}!")
-                    self.update_status("VPN Output:")
-                    for line in stdout.strip().split('\n'):
-                        if line.strip():
-                            self.update_status(f"  {line.strip()}")
-                    
-                    messagebox.showinfo(
-                        "VPN Connected", 
-                        f"Successfully connected to {server_name}!\n\nServer: {server_url}"
-                    )
-                else:
-                    self.update_status(f"Failed to connect to {server_name}")
-                    error_msg = stderr.strip() if stderr.strip() else stdout.strip()
-                    self.update_status(f"Error: {error_msg}")
-                    
-                    messagebox.showerror(
-                        "VPN Connection Failed", 
-                        f"Failed to connect to {server_name}.\n\nError: {error_msg}"
-                    )
-                    
-            except subprocess.TimeoutExpired:
-                process.kill()
-                self.update_status("Connection attempt timed out")
-                messagebox.showerror(
-                    "Connection Timeout", 
-                    "VPN connection attempt timed out after 30 seconds."
-                )
-                
-        except FileNotFoundError:
-            self.update_status("ERROR: 'vpn' command not found")
-            messagebox.showerror(
-                "VPN CLI Not Found", 
-                "The 'vpn' command was not found.\n\n"
-                "Please ensure Cisco AnyConnect is installed and the CLI is available."
+            messagebox.showinfo(
+                "AnyConnect Opened", 
+                f"Cisco AnyConnect has been opened for {server_name}!\n\n"
+                f"Server: {server_url}\n"
+                f"Username: {self.username}\n"
+                f"Password: {self.password}\n\n"
+                "Please complete the connection in the AnyConnect window."
             )
+                
         except Exception as e:
-            self.update_status(f"Unexpected error: {str(e)}")
-            messagebox.showerror("Error", f"An unexpected error occurred:\n{str(e)}")
+            self.update_status(f"Error opening AnyConnect: {str(e)}")
+            messagebox.showerror("Error", f"An error occurred while opening AnyConnect:\n{str(e)}")
     
     def disconnect_vpn(self):
-        """Disconnect from VPN"""
-        self.update_status("Disconnecting from VPN...")
+        """Open AnyConnect to manually disconnect"""
+        self.update_status("Opening AnyConnect for manual disconnect...")
         
         thread = threading.Thread(target=self._disconnect_vpn_thread, daemon=True)
         thread.start()
     
     def _disconnect_vpn_thread(self):
-        """Disconnect VPN in separate thread"""
+        """Open AnyConnect GUI for disconnect"""
         try:
-            if not self._check_vpn_cli():
-                self.update_status("ERROR: Cisco AnyConnect CLI 'vpn' command not found!")
+            if not os.path.exists(self.vpn_gui_path):
+                self.update_status("ERROR: Cisco AnyConnect GUI not found!")
                 return
             
-            process = subprocess.Popen(
-                ["vpn", "disconnect"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+            # Simply open AnyConnect GUI - user can disconnect manually
+            subprocess.Popen(
+                [self.vpn_gui_path],
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
-            stdout, stderr = process.communicate(timeout=15)
-            
-            if process.returncode == 0:
-                self.update_status("Successfully disconnected from VPN")
-                messagebox.showinfo("VPN Disconnected", "Successfully disconnected from VPN.")
-            else:
-                error_msg = stderr.strip() if stderr.strip() else stdout.strip()
-                self.update_status(f"Disconnect error: {error_msg}")
-                messagebox.showwarning("Disconnect Warning", f"Disconnect completed with warning:\n{error_msg}")
-                
-        except subprocess.TimeoutExpired:
-            process.kill()
-            self.update_status("Disconnect operation timed out")
-            messagebox.showerror("Timeout", "VPN disconnect operation timed out.")
+            self.update_status("✅ AnyConnect opened for disconnect")
+            messagebox.showinfo("AnyConnect Opened", "AnyConnect has been opened.\nYou can disconnect manually from the AnyConnect window.")
         except Exception as e:
-            self.update_status(f"Disconnect error: {str(e)}")
-            messagebox.showerror("Error", f"Error during disconnect:\n{str(e)}")
+            self.update_status(f"Error opening AnyConnect: {str(e)}")
+            messagebox.showerror("Error", f"An error occurred while opening AnyConnect:\n{str(e)}")
     
     def _check_vpn_cli(self):
-        """Check if VPN CLI is available"""
-        try:
-            # Check if the file exists first
-            if not os.path.exists(self.vpn_cli_path):
-                return False
-                
-            subprocess.run(
-                [self.vpn_cli_path, "--help"], 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-            return True
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
+        """Check if VPN GUI is available"""
+        return os.path.exists(self.vpn_gui_path)
     
     def run(self):
         """Start the GUI application"""

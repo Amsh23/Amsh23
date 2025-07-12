@@ -1,26 +1,35 @@
-# Cisco AnyConnect VPN GUI
+# Cisco AnyConnect VPN GUI - One-Click Connection
 
-A simple Python GUI application for connecting to Cisco AnyConnect VPN servers using Tkinter.
+A simple Python GUI application that opens Cisco AnyConnect with pre-configured VPN servers for easy connection.
 
 ## Features
 
 - Simple and intuitive graphical interface
-- Connect to 6 pre-configured VPN servers:
+- One-click access to 6 pre-configured VPN servers:
   - London: London.ipbama.com
   - Dubai: Dubai.ipbama.com
   - USA: Usa.ipbama.com
   - Netherlands: Netherlands.ipbama.com
   - Canada: Canada.ipbama.com
   - France: France.ipbama.com
-- Real-time status updates
-- Automatic credential handling
-- VPN disconnect functionality
+- Opens Cisco AnyConnect GUI automatically with server pre-filled
+- Shows login credentials for easy copy-paste
+- Perfect for non-technical users
 - Buildable as Windows executable
+
+## How it Works
+
+1. Click a server button in the GUI
+2. Cisco AnyConnect opens automatically with the server URL pre-filled
+3. Enter your credentials in AnyConnect:
+   - Username: amir1382AT
+   - Password: amir1382AT
+4. Click Connect in AnyConnect
 
 ## Requirements
 
 - Python 3.6+
-- Cisco AnyConnect installed with CLI access
+- Cisco AnyConnect installed (GUI version)
 - Windows OS (for executable build)
 
 ## Installation
@@ -72,23 +81,21 @@ To modify servers or credentials, edit these values in the `vpn_gui.py` file.
 
 ## How it works
 
-1. The application uses the Cisco AnyConnect CLI (`vpn -s`) to establish connections
-2. Connection commands are sent via subprocess with proper credential handling
-3. All operations run in separate threads to prevent GUI freezing
-4. Status updates are displayed in real-time
-5. Success/error messages are shown via popup dialogs
+1. The application opens Cisco AnyConnect GUI automatically when you click a server button
+2. The server URL is pre-filled in AnyConnect
+3. You just need to enter your credentials and click Connect
+4. Perfect for non-technical users who want easy VPN access
+5. No command-line knowledge required
 
 ## Troubleshooting
 
-**"VPN CLI Not Found" error:**
+**"VPN GUI Not Found" error:**
 - Ensure Cisco AnyConnect is installed
-- Verify the `vpn` command is available in your system PATH
-- On Windows, the CLI is typically located at: `C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpn.exe`
+- Verify the GUI is at: `C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnui.exe`
 
-**Connection timeouts:**
-- Check your internet connection
-- Verify the VPN server URLs are correct
-- Ensure your credentials are valid
+**AnyConnect doesn't open:**
+- Check if Cisco AnyConnect is properly installed
+- Try running AnyConnect manually first to ensure it works
 
 ## License
 
