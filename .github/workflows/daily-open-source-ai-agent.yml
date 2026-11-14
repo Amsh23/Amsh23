@@ -196,8 +196,8 @@ jobs:
                   repaired = ask_model(
                       "You are a strict JSON repair tool. Return exactly one syntactically valid JSON object. "
                       "Preserve the original meaning and all field values. Do not add Markdown or explanations. "
-                      "If the source is truncated or cannot be repaired safely, return {\\"status\\":\\"skip\\"}.",
-                      "Repair this malformed JSON response. Output only the corrected JSON object:\\n" + text[:18000],
+                      "If the source is truncated or cannot be repaired safely, return an object with status set to skip.",
+                      "Repair this malformed JSON response. Output only the corrected JSON object:\n" + text[:18000],
                       6500,
                   )
                   try:
