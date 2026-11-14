@@ -24,7 +24,7 @@ jobs:
       base: ${{ steps.agent.outputs.base }}
       branch: ${{ steps.agent.outputs.branch }}
     steps:
-      - name: Search all public GitHub and prepare one tested fix with GitHub Models
+      - name: Search public GitHub and prepare one tested fix with OpenRouter / Gemini
         id: agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,6 +43,7 @@ jobs:
           import tempfile
           import urllib.parse
           import urllib.request
+          import urllib.error
           from datetime import datetime, timezone
           from pathlib import Path
 
