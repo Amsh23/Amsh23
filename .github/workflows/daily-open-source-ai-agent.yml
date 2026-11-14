@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  models: read
 
 concurrency:
   group: daily-open-source-ai-agent
@@ -29,6 +28,10 @@ jobs:
         id: agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
           GH_ACTOR: Amsh23
         run: |
           cat > /tmp/daily_agent.py <<'PY'
@@ -49,7 +52,10 @@ jobs:
           META = Path("metadata.json")
           GH_TOKEN = os.environ["GH_TOKEN"]
           ACTOR = os.environ["GH_ACTOR"]
-          MODEL = "openai/gpt-4.1"
+          OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+          GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+          OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash").strip()
+          GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
           def output(**values):
               with OUT.open("a", encoding="utf-8") as f:
@@ -72,29 +78,102 @@ jobs:
                   raw = res.read().decode("utf-8")
                   return json.loads(raw) if raw else {}
 
-          def ask_model(system, prompt, max_tokens=5000):
-              payload = {
-                  "model": MODEL,
-                  "temperature": 0.15,
-                  "max_tokens": max_tokens,
-                  "messages": [
-                      {"role": "system", "content": system},
-                      {"role": "user", "content": prompt},
-                  ],
-              }
+          def http_json(url, headers, payload, timeout=120):
               req = urllib.request.Request(
-                  "https://models.github.ai/inference/chat/completions",
-                  data=json.dumps(payload).encode(),
-                  headers={
-                      "Authorization": f"Bearer {GH_TOKEN}",
-                      "Content-Type": "application/json",
-                      "Accept": "application/json",
-                  },
+                  url,
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={**headers, "Content-Type": "application/json", "Accept": "application/json"},
                   method="POST",
               )
-              with urllib.request.urlopen(req, timeout=120) as res:
-                  data = json.loads(res.read().decode("utf-8"))
-              return data["choices"][0]["message"]["content"]
+              try:
+                  with urllib.request.urlopen(req, timeout=timeout) as res:
+                      raw = res.read().decode("utf-8", errors="replace")
+                      if not raw.strip():
+                          raise RuntimeError("AI provider returned an empty response")
+                      try:
+                          return json.loads(raw)
+                      except json.JSONDecodeError as exc:
+                          raise RuntimeError(f"AI provider returned non-JSON HTTP response: {raw[:500]}") from exc
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(f"AI provider HTTP {exc.code}: {body[:700]}") from exc
+              except urllib.error.URLError as exc:
+                  raise RuntimeError(f"AI provider connection error: {exc}") from exc
+
+          def ask_model(system, prompt, max_tokens=5000):
+              messages = [
+                  {"role": "system", "content": system},
+                  {"role": "user", "content": prompt},
+              ]
+              errors = []
+
+              # Primary provider: OpenRouter.
+              if OPENROUTER_KEY:
+                  try:
+                      data = http_json(
+                          "https://openrouter.ai/api/v1/chat/completions",
+                          {"Authorization": f"Bearer {OPENROUTER_KEY}"},
+                          {
+                              "model": OPENROUTER_MODEL,
+                              "messages": messages,
+                              "temperature": 0.15,
+                              "max_tokens": max_tokens,
+                              "response_format": {"type": "json_object"},
+                          },
+                      )
+                      choices = data.get("choices") or []
+                      content = choices[0].get("message", {}).get("content") if choices else None
+                      if isinstance(content, list):
+                          content = "".join(
+                              part.get("text", "") for part in content if isinstance(part, dict)
+                          )
+                      if isinstance(content, str) and content.strip():
+                          print(f"AI provider used: OpenRouter ({data.get('model', OPENROUTER_MODEL)})")
+                          return content
+                      raise RuntimeError(f"OpenRouter response had no message content: {json.dumps(data)[:700]}")
+                  except Exception as exc:
+                      errors.append(f"OpenRouter: {type(exc).__name__}: {exc}")
+                      print(errors[-1])
+
+              # Fallback provider: Google Gemini API.
+              if GEMINI_KEY:
+                  try:
+                      gemini_prompt = (
+                          system + "\n\n"
+                          "Return only one valid JSON object. Do not use Markdown fences.\n\n"
+                          + prompt
+                      )
+                      data = http_json(
+                          f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+                          {"x-goog-api-key": GEMINI_KEY},
+                          {
+                              "contents": [{"role": "user", "parts": [{"text": gemini_prompt}]}],
+                              "generationConfig": {
+                                  "temperature": 0.15,
+                                  "maxOutputTokens": max_tokens,
+                                  "responseMimeType": "application/json",
+                              },
+                          },
+                      )
+                      candidates = data.get("candidates") or []
+                      parts = (
+                          candidates[0].get("content", {}).get("parts", [])
+                          if candidates else []
+                      )
+                      content = "".join(
+                          part.get("text", "") for part in parts if isinstance(part, dict)
+                      )
+                      if content.strip():
+                          print(f"AI provider used: Gemini ({GEMINI_MODEL})")
+                          return content
+                      raise RuntimeError(f"Gemini response had no text: {json.dumps(data)[:700]}")
+                  except Exception as exc:
+                      errors.append(f"Gemini: {type(exc).__name__}: {exc}")
+                      print(errors[-1])
+
+              if not OPENROUTER_KEY and not GEMINI_KEY:
+                  raise RuntimeError("Missing both OPENROUTER_API_KEY and GEMINI_API_KEY GitHub Secrets")
+              raise RuntimeError("All configured AI providers failed. " + " | ".join(errors)[:1800])
 
           def parse_json(text):
               text = text.strip()
