@@ -177,14 +177,36 @@ jobs:
               raise RuntimeError("All configured AI providers failed. " + " | ".join(errors)[:1800])
 
           def parse_json(text):
-              text = text.strip()
-              text = re.sub(r"^\`\`\`(?:json)?\s*", "", text)
-              text = re.sub(r"\s*\`\`\`$", "", text)
-              start = text.find("{")
-              if start < 0:
-                  raise ValueError("Model did not return a JSON object")
-              obj, _ = json.JSONDecoder().raw_decode(text[start:])
-              return obj
+              def decode(raw):
+                  raw = raw.strip()
+                  raw = re.sub(r"^\`\`\`(?:json)?\s*", "", raw)
+                  raw = re.sub(r"\s*\`\`\`$", "", raw)
+                  start = raw.find("{")
+                  if start < 0:
+                      raise ValueError("Model did not return a JSON object")
+                  obj, _ = json.JSONDecoder().raw_decode(raw[start:])
+                  if not isinstance(obj, dict):
+                      raise ValueError("Model JSON must be an object")
+                  return obj
+
+              try:
+                  return decode(text)
+              except (json.JSONDecodeError, ValueError) as first_error:
+                  print(f"Model returned malformed JSON; requesting one repair: {first_error}")
+                  repaired = ask_model(
+                      "You are a strict JSON repair tool. Return exactly one syntactically valid JSON object. "
+                      "Preserve the original meaning and all field values. Do not add Markdown or explanations. "
+                      "If the source is truncated or cannot be repaired safely, return {\\"status\\":\\"skip\\"}.",
+                      "Repair this malformed JSON response. Output only the corrected JSON object:\\n" + text[:18000],
+                      6500,
+                  )
+                  try:
+                      return decode(repaired)
+                  except (json.JSONDecodeError, ValueError) as second_error:
+                      raise ValueError(
+                          "AI returned invalid JSON twice; safely stopped. "
+                          f"Original={first_error}; repair={second_error}"
+                      ) from second_error
 
           def search_candidates():
               queries = [
