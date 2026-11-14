@@ -1,9 +1,6 @@
 name: Daily GitHub learning report to Telegram
 
 on:
-  schedule:
-    # GitHub Actions cron is UTC: 16:07 UTC = 19:37 Asia/Tehran.
-    - cron: "7 16 * * *"
   workflow_dispatch:
 
 permissions:
