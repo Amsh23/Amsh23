@@ -43,8 +43,10 @@ jobs:
                   return json.loads(response.read().decode("utf-8"))
 
           def search(endpoint, query, per_page=100):
+              # GitHub has different supported sort fields for issue vs commit search.
+              sort = "committer-date" if endpoint == "commits" else "updated"
               params = urllib.parse.urlencode({
-                  "q": query, "sort": "updated", "order": "desc",
+                  "q": query, "sort": sort, "order": "desc",
                   "per_page": str(per_page), "page": "1"
               })
               data = api(f"https://api.github.com/search/{endpoint}?{params}")
