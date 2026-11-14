@@ -31,7 +31,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_MODEL: gemini-3.8-flash
           GH_ACTOR: Amsh23
         run: |
           cat > /tmp/daily_agent.py <<'PY'
@@ -118,7 +118,7 @@ jobs:
                               "model": OPENROUTER_MODEL,
                               "messages": messages,
                               "temperature": 0.15,
-                              "max_tokens": max_tokens,
+                              "max_tokens": min(max_tokens, 4500),
                               "response_format": {"type": "json_object"},
                           },
                       )
