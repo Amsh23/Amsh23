@@ -2,22 +2,19 @@ name: Daily GitHub learning report to Telegram
 
 on:
   schedule:
-    # GitHub Actions uses UTC. 16:07 UTC = 19:37 Asia/Tehran.
+    # GitHub Actions cron is UTC: 16:07 UTC = 19:37 Asia/Tehran.
     - cron: "7 16 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
-  checks: read
 
 jobs:
   telegram-learning-report:
     runs-on: ubuntu-latest
     steps:
-      - name: Collect recent public contributions and explain them
+      - name: Search GitHub broadly and send a Persian learning report
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GITHUB_ACTOR: Amsh23
@@ -29,134 +26,183 @@ jobs:
           import urllib.request
           from datetime import datetime, timedelta, timezone
 
-          token = os.environ["GH_TOKEN"]
           bot_token = os.environ["TELEGRAM_BOT_TOKEN"]
           chat_id = os.environ["TELEGRAM_CHAT_ID"]
           actor = os.environ["GITHUB_ACTOR"]
-          cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
           def api(url):
               req = urllib.request.Request(
                   url,
                   headers={
-                      "Authorization": f"Bearer {token}",
                       "Accept": "application/vnd.github+json",
                       "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "Amsh23-Daily-Learning-Reporter",
                   },
               )
-              with urllib.request.urlopen(req, timeout=30) as response:
+              with urllib.request.urlopen(req, timeout=35) as response:
                   return json.loads(response.read().decode("utf-8"))
 
-          events = api(f"https://api.github.com/users/{actor}/events?per_page=100")
-          contributions = []
-          seen = set()
+          def search(endpoint, query, per_page=100):
+              params = urllib.parse.urlencode({
+                  "q": query, "sort": "updated", "order": "desc",
+                  "per_page": str(per_page), "page": "1"
+              })
+              data = api(f"https://api.github.com/search/{endpoint}?{params}")
+              return data.get("items", [])
 
-          for event in events:
-              created = datetime.fromisoformat(event["created_at"].replace("Z", "+00:00"))
-              if created < cutoff:
-                  continue
-              if event.get("type") not in ("PullRequestEvent", "IssuesEvent"):
-                  continue
-              payload = event.get("payload", {})
-              obj = payload.get("pull_request") or payload.get("issue")
-              if not obj:
-                  continue
-              url = obj.get("html_url")
-              if not url or url in seen:
-                  continue
-              seen.add(url)
-              contributions.append((event, obj))
+          # Search globally across public GitHub, not just the user's recent event feed.
+          # Start with 7 days; if empty, widen to 30 days.
+          now = datetime.now(timezone.utc)
+          window_days = 7
+          since = (now - timedelta(days=window_days)).strftime("%Y-%m-%d")
+
+          def collect(days):
+              since_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+              prs = search("issues", f"author:{actor} is:pr created:>={since_date}")
+              issues = search("issues", f"author:{actor} is:issue created:>={since_date}")
+              commits = search("commits", f"author:{actor} committer-date:>={since_date}")
+              return since_date, prs, issues, commits
+
+          since, prs, issues, commits = collect(7)
+          if not prs and not issues and not commits:
+              window_days = 30
+              since, prs, issues, commits = collect(window_days)
 
           lines = [
               "🧑‍💻 گزارش و درس روزانه GitHub",
-              f"🕒 بازه بررسی: ۲۴ ساعت گذشته | حساب: {actor}",
+              f"👤 حساب: {actor}",
+              f"🔎 جست‌وجوی سراسری مخازن عمومی از {since} تا امروز ({window_days} روز)",
               "",
           ]
 
-          if not contributions:
-              lines += [
-                  "در ۲۴ ساعت گذشته PR یا Issue عمومی تازه‌ای برای این حساب در رویدادهای GitHub پیدا نشد.",
-                  "پس امروز تغییر کد یا مشارکت مشخصی برای آموزش گزارش نمی‌کنم تا چیزی ساختگی گفته نشود.",
-                  "",
-                  "🎯 تمرین پیشنهادی: یکی از PRهای قبلی خودت را باز کن، بخش Files changed را بخوان و برای هر فایل یک جمله درباره دلیل تغییرش بنویس.",
-              ]
-          else:
-              for event, obj in contributions[:5]:
-                  repo = event.get("repo", {}).get("name", "unknown/repository")
-                  kind = "Pull Request" if event["type"] == "PullRequestEvent" else "Issue"
-                  action = event.get("payload", {}).get("action", "updated")
+          found = False
+
+          if prs:
+              found = True
+              lines.append(f"🔀 Pull Requestهای ایجادشده توسط شما ({len(prs)}):")
+              for pr in prs[:5]:
+                  repo = pr.get("repository_url", "").replace("https://api.github.com/repos/", "")
                   lines += [
                       "━━━━━━━━━━━━━━━━━━",
-                      f"{'🔀' if kind == 'Pull Request' else '📝'} {kind}: {obj.get('title', 'بدون عنوان')}",
-                      f"📦 مخزن: {repo}",
-                      f"⚙️ رویداد: {action}",
-                      f"🔗 {obj['html_url']}",
+                      f"📌 {pr.get('title', 'بدون عنوان')}",
+                      f"📦 {repo}",
+                      f"🔗 {pr.get('html_url', '')}",
                   ]
-
-                  if kind == "Pull Request":
-                      pr_number = obj.get("number")
-                      repo_encoded = urllib.parse.quote(repo, safe="/")
+                  number = pr.get("number")
+                  if number and repo:
                       try:
-                          files = api(f"https://api.github.com/repos/{repo_encoded}/pulls/{pr_number}/files?per_page=30")
+                          files = api(f"https://api.github.com/repos/{repo}/pulls/{number}/files?per_page=30")
+                          if files:
+                              lines.append("📂 فایل‌های تغییرکرده و مفهوم آن‌ها:")
+                              for file in files[:10]:
+                                  filename = file.get("filename", "?")
+                                  status = file.get("status", "modified")
+                                  lines.append(
+                                      f"• {filename}: {status}، +{file.get('additions', 0)}/-{file.get('deletions', 0)} خط"
+                                  )
+                                  patch = file.get("patch", "")
+                                  additions = [
+                                      x[1:].strip() for x in patch.splitlines()
+                                      if x.startswith("+") and not x.startswith("+++")
+                                  ]
+                                  if additions:
+                                      lines.append("  نمونه تغییر: " + " | ".join(additions[:2])[:220])
+                              lines += [
+                                  "🎓 درس: فایل‌های تغییرکرده نشان می‌دهند PR کدام بخش‌های پروژه را دست‌کاری کرده است. تغییرات هر فایل را با توضیح PR تطبیق بده.",
+                                  "🧪 بررسی تست: این گزارش تست‌ها را اجرا نمی‌کند؛ وضعیت Checks را در صفحه PR ببین و نتیجه را همان‌جا تأیید کن.",
+                              ]
+                          else:
+                              lines.append("جزئیات فایل‌های PR در دسترس نبود.")
                       except Exception as exc:
-                          files = []
-                          lines.append(f"⚠️ دریافت جزئیات فایل‌ها ممکن نشد: {type(exc).__name__}")
-
-                      if files:
-                          lines.append("📂 فایل‌های تغییرکرده:")
-                          for file in files[:12]:
-                              filename = file.get("filename", "unknown")
-                              status = file.get("status", "modified")
-                              additions = file.get("additions", 0)
-                              deletions = file.get("deletions", 0)
-                              lines.append(f"• {filename} ({status}، +{additions}/-{deletions})")
-                              patch = file.get("patch", "")
-                              if patch:
-                                  meaningful = [x for x in patch.splitlines() if x.startswith("+") and not x.startswith("+++")]
-                                  if meaningful:
-                                      sample = " | ".join(x[1:].strip() for x in meaningful[:2])
-                                      if sample:
-                                          lines.append(f"  نمونه کد اضافه‌شده: {sample[:240]}")
-                          lines += [
-                              "🧠 چطور تغییر را بفهمی؟",
-                              "۱) اول فایل‌های بالا را در مخزن باز کن و نقش هر فایل را مشخص کن.",
-                              "۲) خطوط اضافه/حذف‌شده را با مسئله PR مقایسه کن؛ ببین دقیقاً چه رفتاری عوض شده است.",
-                              "۳) اگر تستی وجود دارد، نتیجه Checks در صفحه PR را بررسی کن. این گزارش خودش تست را اجرا نکرده است.",
-                              "۴) بتوانی با زبان خودت توضیح بدهی چرا این تغییر لازم بوده و چه حالت‌هایی را پوشش می‌دهد.",
-                          ]
-                      else:
-                          lines.append("جزئیات فایل‌های تغییرکرده در دسترس نبود؛ از روی عنوان PR درباره کد حدس نمی‌زنم.")
-                  else:
-                      body = " ".join((obj.get("body") or "").split())
-                      if body:
-                          lines.append("📖 شرح مسئله: " + body[:900])
-                      lines += [
-                          "🧠 تمرین: مسئله را با کلمات خودت بازنویسی کن، شرایط بازتولیدش را بنویس و یک راه‌حل کوچک پیشنهاد بده.",
-                      ]
+                          lines.append(f"⚠️ دریافت فایل‌های PR ناموفق بود: {type(exc).__name__}")
                   lines.append("")
 
+          if issues:
+              found = True
+              lines.append(f"📝 Issueهای ایجادشده توسط شما ({len(issues)}):")
+              for item in issues[:5]:
+                  repo = item.get("repository_url", "").replace("https://api.github.com/repos/", "")
+                  body = " ".join((item.get("body") or "").split())
+                  lines += [
+                      "━━━━━━━━━━━━━━━━━━",
+                      f"📌 {item.get('title', 'بدون عنوان')}",
+                      f"📦 {repo}",
+                      f"🔗 {item.get('html_url', '')}",
+                  ]
+                  if body:
+                      lines.append("📖 شرح: " + body[:650])
+                  lines.append("🎓 تمرین: مسئله را به ورودی، خروجی مورد انتظار و شرایط بازتولید تقسیم کن.")
+                  lines.append("")
+
+          if commits:
+              found = True
+              lines.append(f"💾 Commitهای نوشته‌شده توسط شما ({len(commits)}):")
+              for item in commits[:8]:
+                  repo = item.get("repository", {}).get("full_name", "مخزن نامشخص")
+                  commit = item.get("commit", {})
+                  sha = item.get("sha", "")
+                  message = (commit.get("message") or "بدون پیام").splitlines()[0]
+                  lines += [
+                      "━━━━━━━━━━━━━━━━━━",
+                      f"📦 {repo}",
+                      f"🧾 {message}",
+                      f"🔗 {item.get('html_url', '')}",
+                  ]
+                  if sha:
+                      try:
+                          detail = api(f"https://api.github.com/repos/{repo}/commits/{sha}")
+                          files = detail.get("files", [])
+                          if files:
+                              lines.append("📂 فایل‌های commit:")
+                              for file in files[:8]:
+                                  lines.append(
+                                      f"• {file.get('filename', '?')} (+{file.get('additions', 0)}/-{file.get('deletions', 0)})"
+                                  )
+                                  patch = file.get("patch", "")
+                                  additions = [
+                                      x[1:].strip() for x in patch.splitlines()
+                                      if x.startswith("+") and not x.startswith("+++")
+                                  ]
+                                  if additions:
+                                      lines.append("  نمونه کد: " + " | ".join(additions[:2])[:200])
+                              lines.append("🎓 درس: پیام commit خلاصه هدف تغییر است؛ فایل‌ها و diff نشان می‌دهند چه چیزی واقعاً عوض شده.")
+                          else:
+                              lines.append("جزئیات diff برای این commit در دسترس نبود.")
+                      except Exception as exc:
+                          lines.append(f"⚠️ دریافت diff ممکن نشد: {type(exc).__name__}")
+                  lines.append("")
+
+          if not found:
+              lines += [
+                  "با جست‌وجوی سراسری PR، Issue و Commit در مخازن عمومی، در بازه ۳۰ روزه هم نتیجه‌ای برای این حساب پیدا نشد.",
+                  "این جست‌وجو دیگر فقط به Event Feed محدود نیست؛ با این حال فعالیت خصوصی، commitهایی با ایمیل/نام کاربری متفاوت یا رویدادهای ایندکس‌نشده ممکن است دیده نشوند.",
+                  "",
+                  "🎯 تمرین امروز: یک مخزن عمومی را انتخاب کن، README و CONTRIBUTING را بخوان و یک Issue مناسب مبتدی‌ها پیدا کن.",
+              ]
+
           lines += [
-              "📌 یادآوری: این گزارش بر اساس رویدادهای عمومی GitHub است؛ اگر مشارکت روزانه در حساب/مخزن خصوصی باشد یا هنوز PR/Issue عمومی ایجاد نشده باشد، این Workflow آن را نمی‌بیند.",
-              "🤖 این Workflow گزارش و درس مبتنی بر داده‌های واقعی PR/Issue می‌سازد؛ خودش کد را تغییر نمی‌دهد، PR ایجاد نمی‌کند و ادعای اجرای تست ندارد.",
+              "",
+              "📌 این گزارش فقط داده‌های عمومی قابل جست‌وجوی GitHub را پوشش می‌دهد.",
+              "🤖 Workflow گزارش‌ساز است؛ خودش کد را تغییر نمی‌دهد، PR باز نمی‌کند و تستی را اجراشده فرض نمی‌کند.",
           ]
 
           message = "\n".join(lines)
           if len(message) > 3900:
-              message = message[:3820] + "\n\n… برای جزئیات بیشتر لینک PR را باز کن."
+              message = message[:3800] + "\n\n… برای جزئیات کامل لینک‌ها را باز کن."
 
           payload = urllib.parse.urlencode({
               "chat_id": chat_id,
               "text": message,
               "disable_web_page_preview": "true",
           }).encode()
-          request = urllib.request.Request(
+          req = urllib.request.Request(
               f"https://api.telegram.org/bot{bot_token}/sendMessage",
               data=payload,
               method="POST",
           )
-          with urllib.request.urlopen(request, timeout=30) as response:
+          with urllib.request.urlopen(req, timeout=35) as response:
               result = json.loads(response.read().decode("utf-8"))
           if not result.get("ok"):
-              raise RuntimeError("Telegram API did not confirm delivery")
-          print("Telegram learning report delivered successfully.")
+              raise RuntimeError("Telegram API did not confirm message delivery")
+          print("Telegram learning report sent.")
           PY
