@@ -266,7 +266,7 @@ jobs:
                       "repo": repo,
                       "number": item["number"],
                       "title": item.get("title", ""),
-                      "body": re.sub(r"\\s+", " ", item.get("body") or "")[:220],
+                      "body": re.sub(r"\s+", " ", item.get("body") or "")[:220],
                       "url": item["html_url"],
                       "labels": labels[:4],
                   }
