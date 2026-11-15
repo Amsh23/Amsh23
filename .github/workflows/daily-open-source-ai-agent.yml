@@ -31,7 +31,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
-          GEMINI_MODEL: gemini-3.8-flash
+          GEMINI_MODEL: gemini-2.5-flash
           GH_ACTOR: Amsh23
         run: |
           cat > /tmp/daily_agent.py <<'PY'
@@ -79,7 +79,7 @@ jobs:
                   raw = res.read().decode("utf-8")
                   return json.loads(raw) if raw else {}
 
-          def http_json(url, headers, payload, timeout=120):
+          def http_json(url, headers, payload, timeout=75):
               req = urllib.request.Request(
                   url,
                   data=json.dumps(payload).encode("utf-8"),
@@ -118,7 +118,7 @@ jobs:
                               "model": OPENROUTER_MODEL,
                               "messages": messages,
                               "temperature": 0.15,
-                              "max_tokens": min(max_tokens, 4500),
+                              "max_tokens": min(max_tokens, 2200),
                               "response_format": {"type": "json_object"},
                           },
                       )
@@ -151,7 +151,7 @@ jobs:
                               "contents": [{"role": "user", "parts": [{"text": gemini_prompt}]}],
                               "generationConfig": {
                                   "temperature": 0.15,
-                                  "maxOutputTokens": max_tokens,
+                                  "maxOutputTokens": min(max_tokens, 2800),
                                   "responseMimeType": "application/json",
                               },
                           },
@@ -242,7 +242,7 @@ jobs:
                       "repo": repo,
                       "number": item["number"],
                       "title": item.get("title", ""),
-                      "body": (item.get("body") or "")[:1800],
+                      "body": (item.get("body") or "")[:900],
                       "url": item["html_url"],
                       "labels": labels,
                       "comments": item.get("comments", 0),
@@ -250,7 +250,7 @@ jobs:
                   }
               # Keep the most recently updated candidates; the model evaluates
               # their actual labels and descriptions rather than relying on label names.
-              candidates = list(found.values())[:60]
+              candidates = list(found.values())[:25]
               print(f"Found {len(candidates)} open Python issues across all label types (including unlabeled issues).")
               return candidates
 
@@ -322,12 +322,12 @@ jobs:
                       for name in ("README.md", "README.rst", "CONTRIBUTING.md", "pyproject.toml", "setup.cfg"):
                           p = work / name
                           if p.is_file():
-                              context_parts.append(f"\n--- {name} ---\n{p.read_text(encoding='utf-8', errors='replace')[:5000]}")
+                              context_parts.append(f"\n--- {name} ---\n{p.read_text(encoding='utf-8', errors='replace')[:2500]}")
                       context_parts.append("\n--- Python file list ---\n" + "\n".join(preferred))
                       for rel in preferred:
                           p = work / rel
-                          context_parts.append(f"\n--- FILE: {rel} ---\n{p.read_text(encoding='utf-8', errors='replace')[:8000]}")
-                      context = "\n".join(context_parts)[:48000]
+                          context_parts.append(f"\n--- FILE: {rel} ---\n{p.read_text(encoding='utf-8', errors='replace')[:3500]}")
+                      context = "\n".join(context_parts)[:14000]
                       if not preferred:
                           write_report("## 🤖 گزارش عامل متن‌باز روزانه\n\nدر مخزن فایل Python قابل بررسی پیدا نشد؛ Issue انتخاب‌شده کنار گذاشته شد.\n")
                           return
