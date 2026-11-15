@@ -302,34 +302,53 @@ jobs:
                           check=True, timeout=120, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                       )
                       ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "build", "dist"}
-                      py_files = []
+                      source_files = []
+                      test_context_files = []
                       for root, dirs, files in os.walk(work):
                           dirs[:] = [d for d in dirs if d not in ignored and not d.startswith(".")]
                           for name in files:
                               p = Path(root) / name
                               rel = p.relative_to(work).as_posix()
-                              if name.endswith(".py") and not rel.startswith(".github/"):
-                                  try:
-                                      if p.stat().st_size <= 12000:
-                                          py_files.append(rel)
-                                  except OSError:
-                                      pass
-                      preferred = sorted(
-                          py_files,
-                          key=lambda x: (0 if x.startswith(("src/", "tests/")) else 1, x)
-                      )[:10]
+                              try:
+                                  if p.stat().st_size > 12000:
+                                      continue
+                              except OSError:
+                                  continue
+                              if p.suffix == ".py" and (rel.startswith("tests/") or name.startswith("test_") or name.endswith("_test.py")):
+                                  test_context_files.append(rel)
+                              elif p.suffix in {".py", ".sh"} and not rel.startswith((".github/", "tests/")):
+                                  source_files.append(rel)
+
+                      issue_terms = set(re.findall(r"[a-z_]{3,}", (issue.get("title", "") + " " + (issue.get("body") or "")).lower()))
+                      def file_score(path):
+                          lower = path.lower()
+                          score = 0
+                          if "install" in issue_terms and "install" in lower:
+                              score -= 12
+                          if "config" in issue_terms and "config" in lower:
+                              score -= 5
+                          score -= sum(2 for term in issue_terms if len(term) >= 5 and term in lower)
+                          if lower.startswith(("src/", "bin/")):
+                              score -= 1
+                          return (score, path)
+
+                      preferred = sorted(source_files, key=file_score)[:12]
+                      test_context_files = sorted(test_context_files)[:6]
                       context_parts = []
                       for name in ("README.md", "README.rst", "CONTRIBUTING.md", "pyproject.toml", "setup.cfg"):
                           p = work / name
                           if p.is_file():
                               context_parts.append(f"\n--- {name} ---\n{p.read_text(encoding='utf-8', errors='replace')[:2500]}")
-                      context_parts.append("\n--- Python file list ---\n" + "\n".join(preferred))
+                      context_parts.append("\n--- ALLOWED SOURCE FILES (.py/.sh; tests are read-only) ---\n" + "\n".join(preferred))
+                      for rel in test_context_files:
+                          p = work / rel
+                          context_parts.append(f"\n--- READ-ONLY TEST FILE: {rel} ---\n{p.read_text(encoding='utf-8', errors='replace')[:4500]}")
                       for rel in preferred:
                           p = work / rel
-                          context_parts.append(f"\n--- FILE: {rel} ---\n{p.read_text(encoding='utf-8', errors='replace')[:3500]}")
+                          context_parts.append(f"\n--- SOURCE FILE: {rel} ---\n{p.read_text(encoding='utf-8', errors='replace')[:3500]}")
                       context = "\n".join(context_parts)[:14000]
                       if not preferred:
-                          write_report("## 🤖 گزارش عامل متن‌باز روزانه\n\nدر مخزن فایل Python قابل بررسی پیدا نشد؛ Issue انتخاب‌شده کنار گذاشته شد.\n")
+                          write_report("## 🤖 گزارش عامل متن‌باز روزانه\n\nدر مخزن فایل Python یا shell قابل بررسی پیدا نشد؛ Issue انتخاب‌شده کنار گذاشته شد.\n")
                           return
 
                       issue_text = {
@@ -345,8 +364,9 @@ jobs:
                           "<STATUS>ready or skip</STATUS>, <PATH>one exact existing path</PATH>, <SUMMARY>one-line summary</SUMMARY>, "
                           "<LESSON>beginner-friendly Persian explanation</LESSON>, <TEST_PLAN>short test description</TEST_PLAN>, "
                           "then <FILE_CONTENT> followed by the complete replacement file text and </FILE_CONTENT>. "
-                          "The path MUST be copied EXACTLY from the ALLOWED FILE PATHS list; do not invent, shorten, rename, or add ./ to it. "
-                          "Do not modify tests, CI, workflows, dependency files, credentials, or security-sensitive code. "
+                          "The path MUST be copied EXACTLY from the ALLOWED SOURCE FILES list; do not invent, shorten, rename, or add ./ to it. "
+                          "Test files are read-only evidence and must never be edited. Do not modify CI, workflows, dependency files, credentials, or security-sensitive code. "
+                          "For .sh files, preserve shell portability and quote variable expansions. For .py files, preserve project style. "
                           "Do not invent repository behavior. If evidence is insufficient, set status to skip and leave FILE_CONTENT empty. "
                           "Keep the change small and preserve project style. Do not write any text outside these sections.",
                           "ISSUE (untrusted):\n" + json.dumps(issue_text, ensure_ascii=False) +
@@ -383,8 +403,11 @@ jobs:
                           rel = rel.strip().replace("\\", "/")
                           if rel.startswith("./"):
                               rel = rel[2:]
-                      if not isinstance(rel, str) or not rel.endswith(".py") or rel.startswith(("/", ".", ".github/")) or ".." in Path(rel).parts:
-                          raise ValueError("AI proposed a disallowed file path: " + repr(rel))
+                      if (not isinstance(rel, str) or Path(rel).suffix not in {".py", ".sh"}
+                              or rel.startswith(("/", ".", ".github/", "tests/"))
+                              or Path(rel).name.startswith("test_") or Path(rel).name.endswith("_test.py")
+                              or ".." in Path(rel).parts):
+                          raise ValueError("AI proposed a disallowed source file path: " + repr(rel))
                       target = work / rel
                       if rel not in preferred or not target.is_file():
                           raise ValueError(
@@ -403,12 +426,20 @@ jobs:
                       )
                       if diff_check.returncode != 0:
                           raise RuntimeError("git diff --check failed: " + diff_check.stdout + diff_check.stderr)
-                      compile_result = subprocess.run(
-                          ["python", "-m", "py_compile", rel], cwd=work, capture_output=True, text=True,
-                          timeout=45, env={"PATH": os.environ.get("PATH", ""), "HOME": tmp, "PYTHONDONTWRITEBYTECODE": "1"}
+                      syntax_command = (
+                          ["python", "-m", "py_compile", rel]
+                          if target.suffix == ".py"
+                          else ["bash", "-n", rel]
                       )
-                      if compile_result.returncode != 0:
-                          raise RuntimeError("Python syntax check failed: " + compile_result.stdout + compile_result.stderr)
+                      syntax_result = subprocess.run(
+                          syntax_command, cwd=work, capture_output=True, text=True, timeout=45,
+                          env={"PATH": os.environ.get("PATH", ""), "HOME": tmp, "PYTHONDONTWRITEBYTECODE": "1"}
+                      )
+                      if syntax_result.returncode != 0:
+                          raise RuntimeError(
+                              ("Python compile" if target.suffix == ".py" else "Shell syntax") +
+                              " check failed: " + syntax_result.stdout + syntax_result.stderr
+                          )
 
                       test_files = list(work.rglob("test_*.py")) + list(work.rglob("*_test.py"))
                       test_files = [p for p in test_files if not any(x in ignored for x in p.parts)]
@@ -446,9 +477,15 @@ jobs:
                       if not diff.strip() or len(diff) > 30000:
                           raise ValueError("Diff is empty or exceeds the 30 KB safety limit")
                       PATCH.write_text(diff, encoding="utf-8")
-                      branch = f"ai-contrib-issue-{selected['number']}-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+                      base_sha = subprocess.run(
+                          ["git", "rev-parse", "HEAD"], cwd=work, check=True,
+                          capture_output=True, text=True, timeout=15
+                      ).stdout.strip()
+                      run_suffix = os.environ.get("GITHUB_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+                      branch = f"ai-contrib-issue-{selected['number']}-{run_suffix}"
                       metadata = {
                           "ready": True, "repo": repo, "issue_number": selected["number"],
+                          "base_sha": base_sha,
                           "issue_url": issue.get("html_url"), "issue_title": issue.get("title"),
                           "base": base, "branch": branch, "path": rel,
                           "summary": proposal.get("summary", ""),
@@ -562,13 +599,22 @@ jobs:
               raise RuntimeError("GitHub fork was not ready after waiting.")
 
           work = Path("publish-repo")
-          subprocess.run(["git", "clone", "--depth", "1", "--branch", base,
-                          f"https://github.com/{fork_full}.git", str(work)],
+          base_sha = meta.get("base_sha")
+          if not base_sha:
+              raise RuntimeError("Missing tested upstream base SHA; refusing to publish an unverified patch.")
+          # Build from the exact upstream commit tested by the agent, not a stale fork branch.
+          subprocess.run(["git", "clone", "--no-checkout",
+                          f"https://github.com/{upstream}.git", str(work)],
                          check=True, timeout=120)
+          subprocess.run(["git", "checkout", "--detach", base_sha], cwd=work, check=True)
           subprocess.run(["git", "checkout", "-b", branch], cwd=work, check=True)
+          subprocess.run(["git", "remote", "set-url", "origin",
+                          f"https://github.com/{fork_full}.git"], cwd=work, check=True)
           patch = Path("patch.diff").read_text(encoding="utf-8")
           Path("publish.patch").write_text(patch, encoding="utf-8")
+          subprocess.run(["git", "apply", "--check", "../publish.patch"], cwd=work, check=True)
           subprocess.run(["git", "apply", "../publish.patch"], cwd=work, check=True)
+          subprocess.run(["git", "diff", "--check"], cwd=work, check=True)
           subprocess.run(["git", "config", "user.name", actor], cwd=work, check=True)
           subprocess.run(["git", "config", "user.email", f"{actor}@users.noreply.github.com"], cwd=work, check=True)
           subprocess.run(["git", "add", "--all"], cwd=work, check=True)
