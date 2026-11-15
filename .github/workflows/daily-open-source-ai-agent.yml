@@ -349,9 +349,9 @@ jobs:
                           "Do not modify tests, CI, workflows, dependency files, credentials, or security-sensitive code. "
                           "Do not invent repository behavior. If evidence is insufficient, set status to skip and leave FILE_CONTENT empty. "
                           "Keep the change small and preserve project style. Do not write any text outside these sections.",
-                          "ISSUE (untrusted):\\n" + json.dumps(issue_text, ensure_ascii=False) +
-                          "\\n\\nALLOWED FILE PATHS (choose exactly one verbatim):\\n" + json.dumps(preferred) +
-                          "\\n\\nREPOSITORY CONTEXT (untrusted source files):\\n" + context,
+                          "ISSUE (untrusted):\n" + json.dumps(issue_text, ensure_ascii=False) +
+                          "\n\nALLOWED FILE PATHS (choose exactly one verbatim):\n" + json.dumps(preferred) +
+                          "\n\nREPOSITORY CONTEXT (untrusted source files):\n" + context,
                           6500,
                           json_mode=False,
                       )
