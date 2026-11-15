@@ -299,8 +299,8 @@ jobs:
                   with tempfile.TemporaryDirectory(prefix="oss-agent-") as tmp:
                       work = Path(tmp) / "repo"
                       subprocess.run(
-                          ["git", "clone", "--depth", "1", "--branch", base, f"https://github.com/{repo}.git", str(work)],
-                          check=True, timeout=120, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                          ["git", "clone", "--branch", base, f"https://github.com/{repo}.git", str(work)],
+                          check=True, timeout=300, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                       )
                       ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "build", "dist"}
                       source_files = []
@@ -446,17 +446,29 @@ jobs:
 
                       test_files = list(work.rglob("test_*.py")) + list(work.rglob("*_test.py"))
                       test_files = [p for p in test_files if not any(x in ignored for x in p.parts)]
+                      shell_test_files = list(work.rglob("test_*.sh"))
                       test_log = ("Python syntax check: PASS. " if target.suffix == ".py" else "Shell syntax check: PASS. ")
-                      if test_files:
-                          # Install only pytest. Do not install untrusted repository dependencies automatically.
-                          env = {
-                              "PATH": os.environ.get("PATH", ""),
-                              "HOME": tmp,
-                              "CI": "true",
-                              "PYTHONDONTWRITEBYTECODE": "1",
-                              "PIP_DISABLE_PIP_VERSION_CHECK": "1",
-                              "PIP_NO_INPUT": "1",
-                          }
+                      env = {
+                          "PATH": os.environ.get("PATH", ""),
+                          "HOME": tmp,
+                          "CI": "true",
+                          "PYTHONDONTWRITEBYTECODE": "1",
+                          "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+                          "PIP_NO_INPUT": "1",
+                      }
+                      canonical_runner = work / "tools" / "run_tests.sh"
+                      if canonical_runner.is_file():
+                          # Prefer the project's own CI entry point: it may include
+                          # unit, regression, integration, shell, e2e, and mutation tests.
+                          test = subprocess.run(
+                              ["bash", "tools/run_tests.sh"],
+                              cwd=work, capture_output=True, text=True, timeout=600, env=env
+                          )
+                          test_log += f"Project CI test runner exit={test.returncode}.\\n" + (test.stdout + test.stderr)[-8000:]
+                          if test.returncode != 0:
+                              raise RuntimeError("Project CI test runner failed; no PR will be opened. " + test_log[-2500:])
+                      elif test_files:
+                          # Fallback only when the repository has no canonical test runner.
                           install = subprocess.run(
                               ["python", "-m", "pip", "install", "--quiet", "pytest"],
                               cwd=work, capture_output=True, text=True, timeout=150, env=env
@@ -467,14 +479,26 @@ jobs:
                                   + (install.stdout + install.stderr)[-2000:]
                               )
                           test = subprocess.run(
-                              ["python", "-m", "pytest", "-q", "--disable-warnings", "--maxfail=1"],
-                              cwd=work, capture_output=True, text=True, timeout=180, env=env
+                              ["python", "-m", "pytest", "-q", "--disable-warnings"],
+                              cwd=work, capture_output=True, text=True, timeout=300, env=env
                           )
-                          test_log += f"pytest exit={test.returncode}.\\n" + (test.stdout + test.stderr)[-5000:]
+                          test_log += f"Full pytest suite exit={test.returncode}.\\n" + (test.stdout + test.stderr)[-8000:]
                           if test.returncode != 0:
-                              raise RuntimeError("Existing pytest suite failed; no PR will be opened. " + test_log[-1500:])
+                              raise RuntimeError("Full pytest suite failed; no PR will be opened. " + test_log[-2500:])
+                      elif shell_test_files:
+                          shell_failures = []
+                          for shell_test in sorted(shell_test_files):
+                              result = subprocess.run(
+                                  ["bash", str(shell_test.relative_to(work))],
+                                  cwd=work, capture_output=True, text=True, timeout=180, env=env
+                              )
+                              test_log += f"\\n{shell_test.relative_to(work)} exit={result.returncode}\\n" + (result.stdout + result.stderr)[-2500:]
+                              if result.returncode != 0:
+                                  shell_failures.append(str(shell_test.relative_to(work)))
+                          if shell_failures:
+                              raise RuntimeError("Shell test(s) failed; no PR will be opened: " + ", ".join(shell_failures))
                       else:
-                          test_log += "No existing Python test files were detected; only syntax and diff checks were run."
+                          test_log += "No recognized project test runner or test files were detected; only syntax and diff checks were run."
 
                       diff = subprocess.run(["git", "diff", "--", rel], cwd=work, capture_output=True, text=True, timeout=30).stdout
                       if not diff.strip() or len(diff) > 30000:
