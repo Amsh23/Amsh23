@@ -32,7 +32,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
-          GEMINI_MODEL: gemini-2.5-flash
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           GH_ACTOR: Amsh23
         run: |
           cat > /tmp/daily_agent.py <<'PY'
@@ -57,7 +57,7 @@ jobs:
           OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
           GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
           OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash").strip()
-          GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+          GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
           def output(**values):
               with OUT.open("a", encoding="utf-8") as f:
@@ -137,7 +137,9 @@ jobs:
                       errors.append(f"OpenRouter: {type(exc).__name__}: {exc}")
                       print(errors[-1])
 
-              # Fallback provider: Google Gemini API.
+              # Fallback provider: Google Gemini API. OpenRouter credit/quota errors are
+              # expected to fall through here; Gemini uses its independently configured model.
+
               if GEMINI_KEY:
                   try:
                       gemini_prompt = (
@@ -279,7 +281,7 @@ jobs:
                       "Return ONLY JSON: {\"status\":\"selected\" or \"skip\",\"url\":\"exact candidate URL\",\"reason\":\"brief reason\"}.",
                       "Choose one issue from this candidate list, or skip if none is safe and sufficiently clear:\n" +
                       json.dumps(candidates, ensure_ascii=False),
-                      1200,
+                      800,
                   ))
                   selected = next((x for x in candidates if x["url"] == selection.get("url")), None)
                   if selection.get("status") != "selected" or not selected:
