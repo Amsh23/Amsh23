@@ -60,7 +60,7 @@ jobs:
           key: opportunity-finder-state-${{ github.run_id }}
           restore-keys: opportunity-finder-state-
 
-      - name: Run agent
+      - name: Discover GitHub opportunities
         id: agent
         continue-on-error: true # so the report/Telegram steps always run
         env:
