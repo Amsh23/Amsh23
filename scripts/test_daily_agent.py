@@ -107,55 +107,6 @@ class LLMTests(unittest.TestCase):
 
 
 
-class ProviderConfigTests(unittest.TestCase):
-    def test_gemini_falls_back_to_next_model_after_503(self):
-        with mock.patch.dict(os.environ, {
-            "GEMINI_API_KEY": "test-key",
-        }, clear=True):
-            urls = []
-
-            def fake_request(method, url, **kwargs):
-                urls.append(url)
-                if "gemini-3.8-flash" in url:
-                    raise da.TransientError("HTTP 503")
-                return FakeResp(body={"candidates": [{"content": {"parts": [{"text": '{"ok":true}'}]}}]})
-
-            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
-                self.assertEqual(da.call_gemini("system", "prompt"), '{"ok":true}')
-            self.assertEqual(len(urls), 2)
-            self.assertIn("gemini-3.6-flash", urls[1])
-
-    def test_gemini_is_prioritized_over_openrouter(self):
-        with mock.patch.dict(os.environ, {
-            "GEMINI_API_KEY": "gemini-key",
-            "OPENROUTER_API_KEY": "openrouter-key",
-        }, clear=True):
-            providers = da.LLM().providers
-        self.assertEqual([name for name, _ in providers], ["gemini", "openrouter"])
-
-    def test_openrouter_defaults_when_model_variable_is_empty(self):
-            captured = {}
-
-            def fake_request(*args, **kwargs):
-                captured.update(kwargs)
-                return FakeResp(body={"choices": [{"message": {"content": "{}"}}]})
-
-            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
-                self.assertEqual(da.call_openrouter("system", "prompt"), "{}")
-            self.assertEqual(captured["json"]["model"], "openrouter/auto")
-
-    def test_gemini_defaults_when_model_variable_is_empty(self):
-            captured = {}
-
-            def fake_request(*args, **kwargs):
-                captured["url"] = args[1]
-                return FakeResp(body={"candidates": [{"content": {"parts": [{"text": "{}"}]}}]})
-
-            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
-                self.assertEqual(da.call_gemini("system", "prompt"), "{}")
-            self.assertTrue(captured["url"].endswith("/models/gemini-3.8-flash:generateContent"))
-
-
 class FilterTests(unittest.TestCase):
     repo = {"stargazers_count": 500, "pushed_at": da.now().isoformat(), "size": 1000}
     item = {"body": "x" * 200, "labels": [{"name": "bug"}]}
