@@ -1,4 +1,4 @@
-name: Daily AI Open Source Contributor
+name: Daily GitHub Opportunity Finder
 
 on:
   schedule:
@@ -54,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --quiet "requests==2.32.3" "PyYAML==6.0.2"
 
-      - name: Run agent unit tests
+      - name: Discover GitHub opportunities unit tests
         run: python -m unittest discover -s scripts -p 'test_*.py' -v
 
       - name: Restore rejected/seen-issue memory
@@ -70,11 +70,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_PAT: ${{ secrets.GH_PAT || secrets.PAT_FOR_PR }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GOOGLE_API_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
-          GEMINI_FALLBACK_MODELS: ${{ vars.GEMINI_FALLBACK_MODELS || 'gemini-3.6-flash,gemini-3.1-flash-lite' }}
           AGENT_MIN_STARS: ${{ vars.AGENT_MIN_STARS || '0' }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python scripts/daily_agent.py run
@@ -111,8 +106,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/daily-open-source-ai-agent.yml/enable"
 
-      - name: Fail the job if the agent failed
+      - name: Fail the job if discovery failed
         if: steps.agent.outcome == 'failure'
         run: |
-          echo "Agent step failed (provider failure or crash). See the report artifact."
+          echo "Opportunity finder failed. See the report artifact."
           exit 1
