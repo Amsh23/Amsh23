@@ -173,28 +173,40 @@ def call_openrouter(system: str, prompt: str) -> str:
 
 def call_gemini(system: str, prompt: str) -> str:
     key = os.environ["GEMINI_API_KEY"]
-    model = (os.environ.get("GEMINI_MODEL") or "").strip() or "gemini-3.8-flash"
-    resp = request_with_retry(
-        "POST", f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        timeout=120, retries=3, headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-        json={"systemInstruction": {"parts": [{"text": system}]},
-              "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-              "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json",
-                                   "maxOutputTokens": 8000}})
-    try:
-        return "".join(p.get("text", "") for p in resp.json()["candidates"][0]["content"]["parts"])
-    except (KeyError, IndexError, TypeError) as exc:
-        raise PermanentError("gemini: unexpected response shape (blocked or empty)") from exc
+    primary = (os.environ.get("GEMINI_MODEL") or "").strip() or "gemini-3.8-flash"
+    fallback_text = os.environ.get(
+        "GEMINI_FALLBACK_MODELS", "gemini-3.6-flash,gemini-3.1-flash-lite"
+    )
+    models = list(dict.fromkeys([primary] + [m.strip() for m in fallback_text.split(",") if m.strip()]))
+    failures = []
+    for model in models:
+        try:
+            resp = request_with_retry(
+                "POST", f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                timeout=120, retries=3, headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                json={"systemInstruction": {"parts": [{"text": system}]},
+                      "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                      "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json",
+                                           "maxOutputTokens": 8000}})
+            try:
+                return "".join(p.get("text", "") for p in resp.json()["candidates"][0]["content"]["parts"])
+            except (KeyError, IndexError, TypeError) as exc:
+                raise PermanentError(f"gemini {model}: unexpected response shape (blocked or empty)") from exc
+        except TransientError as exc:
+            failures.append(f"{model}: {redact(exc)}")
+            log(f"Gemini model {model} unavailable; trying next configured model")
+    raise TransientError("all Gemini models unavailable after retries: " + "; ".join(failures))
 
 
 class LLM:
     def __init__(self, providers: list[tuple[str, Callable[[str, str], str]]] | None = None):
         if providers is None:
             providers = []
-            if os.environ.get("OPENROUTER_API_KEY"):
-                providers.append(("openrouter", call_openrouter))
+            # Prefer Gemini's free tier; only use OpenRouter if Gemini is unavailable.
             if os.environ.get("GEMINI_API_KEY"):
                 providers.append(("gemini", call_gemini))
+            if os.environ.get("OPENROUTER_API_KEY"):
+                providers.append(("openrouter", call_openrouter))
         self.providers = providers
         self.dead: dict[str, str] = {}
         self.used: str | None = None
