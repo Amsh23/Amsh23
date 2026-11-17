@@ -62,8 +62,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .agent_state
-          key: agent-state-${{ github.run_id }}
-          restore-keys: agent-state-
+          key: opportunity-finder-state-${{ github.run_id }}
+          restore-keys: opportunity-finder-state-
 
       - name: Run agent
         id: agent
@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .agent_state
-          key: agent-state-${{ github.run_id }}
+          key: opportunity-finder-state-${{ github.run_id }}
 
       - name: Upload report
         if: always()
