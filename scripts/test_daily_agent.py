@@ -463,8 +463,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertLessEqual(job["timeout-minutes"], 60)
         steps = {s.get("name"): s for s in job["steps"]}
         self.assertEqual(steps["Telegram report"]["if"], "always()")
-        self.assertTrue(steps["Run agent"]["continue-on-error"])
-        env = steps["Run agent"]["env"]
+        self.assertTrue(steps["Discover GitHub opportunities"]["continue-on-error"])
+        env = steps["Discover GitHub opportunities"]["env"]
         self.assertNotIn("GEMINI_API_KEY", env)
         self.assertNotIn("OPENROUTER_API_KEY", env)
         self.assertEqual(env["AGENT_MIN_STARS"], "${{ vars.AGENT_MIN_STARS || '0' }}")
