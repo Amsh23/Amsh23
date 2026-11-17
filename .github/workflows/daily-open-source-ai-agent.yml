@@ -74,6 +74,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GOOGLE_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_FALLBACK_MODELS: ${{ vars.GEMINI_FALLBACK_MODELS || 'gemini-3.6-flash,gemini-3.1-flash-lite' }}
           AGENT_MIN_STARS: ${{ vars.AGENT_MIN_STARS || '0' }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python scripts/daily_agent.py run
