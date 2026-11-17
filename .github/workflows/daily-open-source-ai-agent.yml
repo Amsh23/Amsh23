@@ -6,11 +6,6 @@ on:
     # GitHub delays/drops scheduled runs at :00 when load is high.
     - cron: "11 3 * * *"
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Validate a patch but do not open a PR"
-        type: boolean
-        default: false
   pull_request:
     paths:
       - '.github/workflows/daily-open-source-ai-agent.yml'
@@ -71,7 +66,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           AGENT_MIN_STARS: ${{ vars.AGENT_MIN_STARS || '0' }}
-          DRY_RUN: ${{ inputs.dry_run }}
         run: python scripts/daily_agent.py run
 
       - name: Save seen-issue memory
