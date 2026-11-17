@@ -398,6 +398,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_safety_settings(self):
         self.assertEqual(self.wf["permissions"]["contents"], "read")
+        self.assertEqual(self.wf["permissions"]["issues"], "read")
         self.assertFalse(self.wf["concurrency"]["cancel-in-progress"])
         job = self.wf["jobs"]["agent"]
         self.assertLessEqual(job["timeout-minutes"], 60)
