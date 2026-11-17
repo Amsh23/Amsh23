@@ -69,7 +69,6 @@ jobs:
         continue-on-error: true # so the report/Telegram steps always run
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GH_PAT: ${{ secrets.GH_PAT || secrets.PAT_FOR_PR }}
           AGENT_MIN_STARS: ${{ vars.AGENT_MIN_STARS || '0' }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: python scripts/daily_agent.py run
