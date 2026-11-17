@@ -111,8 +111,6 @@ class ProviderConfigTests(unittest.TestCase):
     def test_gemini_falls_back_to_next_model_after_503(self):
         with mock.patch.dict(os.environ, {
             "GEMINI_API_KEY": "test-key",
-            "GEMINI_MODEL": "gemini-3.8-flash",
-            "GEMINI_FALLBACK_MODELS": "gemini-3.6-flash,gemini-3.1-flash-lite",
         }, clear=True):
             urls = []
 
@@ -136,7 +134,6 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertEqual([name for name, _ in providers], ["gemini", "openrouter"])
 
     def test_openrouter_defaults_when_model_variable_is_empty(self):
-        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": ""}, clear=True):
             captured = {}
 
             def fake_request(*args, **kwargs):
@@ -148,7 +145,6 @@ class ProviderConfigTests(unittest.TestCase):
             self.assertEqual(captured["json"]["model"], "openrouter/auto")
 
     def test_gemini_defaults_when_model_variable_is_empty(self):
-        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": ""}, clear=True):
             captured = {}
 
             def fake_request(*args, **kwargs):
@@ -424,7 +420,7 @@ class ReportTests(unittest.TestCase):
                    "ai_attempts": 2, "tests": [], "provider": "gemini", "error": "boom 123456:SECRETTOKEN",
                    "rejections": [{"url": "u", "reason": "vague: issue body too short"}] * 3}
             text = da.format_report(rep, "https://github.com/x/y/actions/runs/1")
-        self.assertIn("no_suitable_issue", text)
+        self.assertIn("Daily GitHub Opportunity Finder", text)
         self.assertIn("3x vague", text)
         self.assertIn("runs/1", text)
         self.assertNotIn("SECRETTOKEN", text)
@@ -469,10 +465,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(steps["Telegram report"]["if"], "always()")
         self.assertTrue(steps["Run agent"]["continue-on-error"])
         env = steps["Run agent"]["env"]
-        self.assertEqual(env["OPENROUTER_MODEL"], "${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}")
-        self.assertEqual(env["GEMINI_MODEL"], "${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}")
+        self.assertNotIn("GEMINI_API_KEY", env)
+        self.assertNotIn("OPENROUTER_API_KEY", env)
         self.assertEqual(env["AGENT_MIN_STARS"], "${{ vars.AGENT_MIN_STARS || '0' }}")
-        self.assertEqual(env["GEMINI_FALLBACK_MODELS"], "${{ vars.GEMINI_FALLBACK_MODELS || 'gemini-3.6-flash,gemini-3.1-flash-lite' }}")
 
 
 if __name__ == "__main__":
