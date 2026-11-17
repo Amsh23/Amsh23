@@ -107,59 +107,6 @@ class LLMTests(unittest.TestCase):
 
 
 
-class ProviderConfigTests(unittest.TestCase):
-    def test_gemini_falls_back_to_next_model_after_503(self):
-        with mock.patch.dict(os.environ, {
-            "GEMINI_API_KEY": "test-key",
-            "GEMINI_MODEL": "gemini-3.8-flash",
-            "GEMINI_FALLBACK_MODELS": "gemini-3.6-flash,gemini-3.1-flash-lite",
-        }, clear=True):
-            urls = []
-
-            def fake_request(method, url, **kwargs):
-                urls.append(url)
-                if "gemini-3.8-flash" in url:
-                    raise da.TransientError("HTTP 503")
-                return FakeResp(body={"candidates": [{"content": {"parts": [{"text": '{"ok":true}'}]}}]})
-
-            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
-                self.assertEqual(da.call_gemini("system", "prompt"), '{"ok":true}')
-            self.assertEqual(len(urls), 2)
-            self.assertIn("gemini-3.6-flash", urls[1])
-
-    def test_gemini_is_prioritized_over_openrouter(self):
-        with mock.patch.dict(os.environ, {
-            "GEMINI_API_KEY": "gemini-key",
-            "OPENROUTER_API_KEY": "openrouter-key",
-        }, clear=True):
-            providers = da.LLM().providers
-        self.assertEqual([name for name, _ in providers], ["gemini", "openrouter"])
-
-    def test_openrouter_defaults_when_model_variable_is_empty(self):
-        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": ""}, clear=True):
-            captured = {}
-
-            def fake_request(*args, **kwargs):
-                captured.update(kwargs)
-                return FakeResp(body={"choices": [{"message": {"content": "{}"}}]})
-
-            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
-                self.assertEqual(da.call_openrouter("system", "prompt"), "{}")
-            self.assertEqual(captured["json"]["model"], "openrouter/auto")
-
-    def test_gemini_defaults_when_model_variable_is_empty(self):
-        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": ""}, clear=True):
-            captured = {}
-
-            def fake_request(*args, **kwargs):
-                captured["url"] = args[1]
-                return FakeResp(body={"candidates": [{"content": {"parts": [{"text": "{}"}]}}]})
-
-            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
-                self.assertEqual(da.call_gemini("system", "prompt"), "{}")
-            self.assertTrue(captured["url"].endswith("/models/gemini-3.8-flash:generateContent"))
-
-
 class FilterTests(unittest.TestCase):
     repo = {"stargazers_count": 500, "pushed_at": da.now().isoformat(), "size": 1000}
     item = {"body": "x" * 200, "labels": [{"name": "bug"}]}
@@ -249,57 +196,44 @@ class PatchTests(unittest.TestCase):
             da.apply_plan(self.d, {}, self.tracked)
 
 
-class LoopTests(unittest.TestCase):
-    """The agent must continue after a rejection and stop cleanly afterwards."""
-
+class DiscoveryRunTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        for name, val in (("OUT_DIR", Path(self.tmp.name) / "out"), ("STATE_DIR", Path(self.tmp.name) / "st")):
-            p = mock.patch.object(da, name, val)
-            p.start()
-            self.addCleanup(p.stop)
-        p = mock.patch.object(da, "sleep", lambda s: None)
+        p = mock.patch.object(da, "STATE_DIR", Path(self.tmp.name) / "state")
+        p.start()
+        self.addCleanup(p.stop)
+        p = mock.patch.object(da, "sleep", lambda seconds: None)
         p.start()
         self.addCleanup(p.stop)
 
-    def make(self, behaviours):
-        items = [{"html_url": f"https://github.com/o/r/issues/{i}", "number": i} for i in range(len(behaviours))]
+    def test_run_collects_opportunities_without_ai(self):
+        item = {"html_url": "https://github.com/acme/project/issues/12", "repository_url": "https://api.github.com/repos/acme/project",
+                "number": 12, "title": "Fix a beginner-friendly bug", "body": "A detailed issue description. " * 8,
+                "labels": [{"name": "good first issue"}, {"name": "bug"}], "comments": 0, "updated_at": "2026-11-17T10:00:00Z"}
+        class FakeGH:
+            def get(self, path, **params):
+                self.last_path = path
+                return {"stargazers_count": 1200, "language": "Python", "pushed_at": da.now().isoformat(), "size": 100}
+        agent = da.Agent(FakeGH(), None, da.Report(), None, False)
+        agent.discover = lambda: [item]
+        with mock.patch.object(da.LLM, "ask_json", side_effect=AssertionError("AI must not run")):
+            report = agent.run()
+        self.assertEqual(report.status, "opportunities_found")
+        self.assertEqual(len(report.opportunities), 1)
+        self.assertEqual(report.opportunities[0]["repository"], "acme/project")
+        self.assertEqual(report.opportunities[0]["language"], "Python")
+        self.assertEqual(report.ai_attempts, 0)
 
-        class A(da.Agent):
-            def discover(s):
-                return items
-
-            def process(s, item):
-                b = behaviours[item["number"]]
-                if isinstance(b, Exception):
-                    raise b
-                s.report.status = "pr_created"
-
-        return A(None, da.LLM([]), da.Report(), None, False)
-
-    def test_continues_after_rejections(self):
-        a = self.make([da.Reject("vague"), RuntimeError("boom"), da.PermanentError("HTTP 404"), None])
-        rep = a.run()
-        self.assertEqual(rep.status, "pr_created")
-        self.assertEqual(rep.examined, 4)
-        self.assertEqual(len(rep.rejections), 3)
-
-    def test_all_rejected_reports_reasons(self):
-        rep = self.make([da.Reject("vague"), da.Reject("claimed")]).run()
-        self.assertEqual(rep.status, "no_suitable_issue")
-        self.assertEqual([r["reason"] for r in rep.rejections], ["vague", "claimed"])
-
-    def test_provider_failure_stops_run(self):
-        rep = self.make([da.AllProvidersFailed("x"), None]).run()
-        self.assertEqual(rep.status, "provider_failure")
-        self.assertEqual(rep.examined, 1)
-
-    def test_rejected_issues_are_remembered(self):
-        self.make([da.Reject("vague")]).run()
-        self.assertIn("https://github.com/o/r/issues/0", da.load_seen())
-
-
+    def test_run_reports_empty_discovery(self):
+        class FakeGH:
+            def get(self, path, **params):
+                return {"stargazers_count": 100, "language": "Python", "pushed_at": da.now().isoformat(), "size": 100}
+        agent = da.Agent(FakeGH(), None, da.Report(), None, False)
+        agent.discover = lambda: []
+        report = agent.run()
+        self.assertEqual(report.status, "no_opportunities")
+        self.assertEqual(report.opportunities, [])
 class EndToEndPatchGateTests(unittest.TestCase):
     """Real git repo + real test command; GitHub and the LLM are faked."""
 
@@ -420,12 +354,14 @@ class DetectTests(unittest.TestCase):
 class ReportTests(unittest.TestCase):
     def test_telegram_text_contents_and_redaction(self):
         with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "123456:SECRETTOKEN"}):
-            rep = {"status": "no_suitable_issue", "summary": "none", "discovered": 30, "examined": 12,
+            rep = {"status": "opportunities_found", "summary": "found", "discovered": 30, "examined": 12, "opportunities": [{"title": "Fix parser bug", "repository": "acme/parser", "stars": 500, "language": "Python", "labels": ["good first issue"], "body": "A clear bug", "url": "https://github.com/acme/parser/issues/3"}],
                    "ai_attempts": 2, "tests": [], "provider": "gemini", "error": "boom 123456:SECRETTOKEN",
                    "rejections": [{"url": "u", "reason": "vague: issue body too short"}] * 3}
             text = da.format_report(rep, "https://github.com/x/y/actions/runs/1")
-        self.assertIn("no_suitable_issue", text)
-        self.assertIn("3x vague", text)
+        self.assertIn("Daily GitHub Opportunity Finder", text)
+        self.assertIn("Fix parser bug", text)
+        self.assertIn("acme/parser", text)
+        self.assertIn("https://github.com/acme/parser/issues/3", text)
         self.assertIn("runs/1", text)
         self.assertNotIn("SECRETTOKEN", text)
 
@@ -462,17 +398,17 @@ class WorkflowTests(unittest.TestCase):
 
     def test_safety_settings(self):
         self.assertEqual(self.wf["permissions"]["contents"], "read")
+        self.assertEqual(self.wf["permissions"]["issues"], "read")
         self.assertFalse(self.wf["concurrency"]["cancel-in-progress"])
         job = self.wf["jobs"]["agent"]
         self.assertLessEqual(job["timeout-minutes"], 60)
         steps = {s.get("name"): s for s in job["steps"]}
         self.assertEqual(steps["Telegram report"]["if"], "always()")
-        self.assertTrue(steps["Run agent"]["continue-on-error"])
-        env = steps["Run agent"]["env"]
-        self.assertEqual(env["OPENROUTER_MODEL"], "${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}")
-        self.assertEqual(env["GEMINI_MODEL"], "${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}")
+        self.assertTrue(steps["Discover GitHub opportunities"]["continue-on-error"])
+        env = steps["Discover GitHub opportunities"]["env"]
+        self.assertNotIn("GEMINI_API_KEY", env)
+        self.assertNotIn("OPENROUTER_API_KEY", env)
         self.assertEqual(env["AGENT_MIN_STARS"], "${{ vars.AGENT_MIN_STARS || '0' }}")
-        self.assertEqual(env["GEMINI_FALLBACK_MODELS"], "${{ vars.GEMINI_FALLBACK_MODELS || 'gemini-3.6-flash,gemini-3.1-flash-lite' }}")
 
 
 if __name__ == "__main__":
