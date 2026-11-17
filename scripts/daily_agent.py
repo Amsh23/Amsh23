@@ -786,6 +786,7 @@ ICONS = {"opportunities_found": "🔎", "no_opportunities": "📭", "crashed": "
 def format_report(rep: dict, run_url: str) -> str:
     lines = [
         f"{ICONS.get(rep.get('status'), '❔')} Daily GitHub Opportunity Finder",
+        f"Status: {rep.get('status', 'unknown')}",
         rep.get("summary") or "",
         f"🔍 Found: {rep.get('discovered', 0)} | Checked: {rep.get('examined', 0)}",
         "",
