@@ -464,6 +464,7 @@ class Report:
     summary: str = ""
     discovered: int = 0
     examined: int = 0
+    opportunities: list[dict] = field(default_factory=list)
     ai_attempts: int = 0
     rejections: list[dict] = field(default_factory=list)
     selected_issue: dict | None = None
@@ -704,41 +705,63 @@ class Agent:
             "base": info["default_branch"], "body": body, "maintainer_can_modify": True})
         return pr["html_url"]
 
-    # ---- main loop
+    # ---- discovery-only daily run
     def run(self) -> Report:
+        """Find issues and report them; never invoke an LLM or modify code."""
         rep = self.report
         candidates = self.discover()
         rep.discovered = len(candidates)
         log(f"discovered {len(candidates)} unseen candidates")
+        by_repo: dict[str, int] = {}
         for item in candidates[:MAX_CANDIDATES]:
-            url = item["html_url"]
+            url = item.get("html_url", "")
             rep.examined += 1
             try:
-                self.process(item)
-                self.seen[url] = {"ts": now().isoformat(), "reason": "attempted: " + rep.status}
-                break
-            except StopIteration as exc:
-                rep.examined -= 1
-                log(str(exc))
-                break
-            except Reject as exc:
-                rep.reject(url, str(exc))
-                self.seen[url] = {"ts": now().isoformat(), "reason": str(exc)[:200]}
-            except AllProvidersFailed as exc:
-                rep.status, rep.error = "provider_failure", f"All AI providers failed: {exc}"
-                break
+                repo_url = item.get("repository_url", "")
+                owner, repo = repo_url.rstrip("/").rsplit("/", 2)[-2:]
+                info = self.gh.get(f"/repos/{owner}/{repo}")
+                reason = static_reject(item, info)
+                if reason:
+                    rep.reject(url, reason)
+                    continue
+                if item.get("comments", 0):
+                    comments = self.gh.get(f"/repos/{owner}/{repo}/issues/{item['number']}/comments", per_page=30)
+                    reason = comment_reject(comments)
+                    if reason:
+                        rep.reject(url, reason)
+                        continue
+                if by_repo.get(f"{owner}/{repo}", 0) >= 2:
+                    continue
+                labels = [l.get("name", "") if isinstance(l, dict) else str(l) for l in item.get("labels", [])]
+                stars = int(info.get("stargazers_count") or 0)
+                language = info.get("language") or "Not specified"
+                priority_labels = {"good first issue", "help wanted", "beginner", "documentation", "bug"}
+                score = sum(4 for label in labels if label.lower() in priority_labels)
+                score += min(stars // 250, 8) + max(0, 5 - int(item.get("comments") or 0))
+                rep.opportunities.append({
+                    "url": url, "title": item.get("title", "Untitled issue"),
+                    "repository": f"{owner}/{repo}", "stars": stars, "language": language,
+                    "labels": labels[:8], "updated_at": item.get("updated_at", ""),
+                    "body": re.sub(r"\s+", " ", (item.get("body") or "").strip())[:650],
+                    "score": score,
+                })
+                by_repo[f"{owner}/{repo}"] = by_repo.get(f"{owner}/{repo}", 0) + 1
+                self.seen[url] = {"ts": now().isoformat(), "reason": "sent as opportunity"}
+                if len(rep.opportunities) >= 10:
+                    break
             except (PermanentError, TransientError) as exc:
                 rep.reject(url, f"GitHub/API error: {redact(exc)}")
-            except Exception as exc:  # noqa: BLE001 - one bad candidate must not kill the run
-                rep.reject(url, f"unexpected {type(exc).__name__}: {redact(exc)[:150]}")
+            except Exception as exc:
+                rep.reject(url, f"unexpected {type(exc).__name__}: {redact(exc)[:120]}")
+        rep.opportunities.sort(key=lambda x: (x["score"], x["updated_at"]), reverse=True)
         save_seen(self.seen)
-        if rep.status in ("pr_created", "validated_no_pr", "provider_failure"):
-            return rep
-        rep.status = "test_failure" if rep.test_failures else "no_suitable_issue"
-        rep.summary = (f"No PR. Examined {rep.examined} candidates; {rep.test_failures} failed tests."
-                       if rep.test_failures else f"No suitable issue after examining {rep.examined} candidates.")
+        if rep.opportunities:
+            rep.status = "opportunities_found"
+            rep.summary = f"Found {len(rep.opportunities)} GitHub issues worth reviewing. No code was changed and no PR was created."
+        else:
+            rep.status = "no_opportunities"
+            rep.summary = f"No fresh suitable issues found after checking {rep.examined} candidates."
         return rep
-
 
 # --------------------------------------------------------------------------- entry points
 def cmd_run() -> int:
@@ -746,60 +769,46 @@ def cmd_run() -> int:
     rep = Report(dry_run=os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes"))
     code = 0
     try:
-        pat = os.environ.get("GH_PAT") or None
-        token = pat or os.environ.get("GITHUB_TOKEN")
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_PAT")
         if not token:
-            raise PermanentError("no GitHub token available (GH_PAT / GITHUB_TOKEN)")
-        llm = LLM()
-        if not llm.providers:
-            rep.status, rep.error = "provider_failure", "No AI provider configured (OPENROUTER_API_KEY / GEMINI_API_KEY missing)"
-            code = 1
-        else:
-            Agent(GH(token), llm, rep, pat, rep.dry_run).run()
-            rep.provider = llm.used or rep.provider
-            if rep.status == "provider_failure":
-                code = 1
-    except Exception as exc:  # noqa: BLE001
+            raise PermanentError("no GitHub token available (GITHUB_TOKEN)")
+        # Discovery-only mode: deliberately no LLM/provider initialization.
+        Agent(GH(token), None, rep, None, rep.dry_run).run()
+    except Exception as exc:
         rep.status, rep.error, code = "crashed", f"{type(exc).__name__}: {redact(exc)[:400]}", 1
-    if rep.status == "provider_failure" and not rep.summary:
-        rep.summary = rep.error or ""
     (OUT_DIR / "report.json").write_text(json.dumps(rep.__dict__, indent=1, default=str))
-    log(f"status={rep.status} examined={rep.examined} pr={rep.pr_url}")
+    log(f"status={rep.status} examined={rep.examined} opportunities={len(rep.opportunities)}")
     return code
 
-
-ICONS = {"pr_created": "✅", "validated_no_pr": "🟡", "no_suitable_issue": "⚪", "test_failure": "🧪❌",
-         "provider_failure": "🔌❌", "crashed": "💥"}
+ICONS = {"opportunities_found": "🔎", "no_opportunities": "📭", "crashed": "💥"}
 
 
 def format_report(rep: dict, run_url: str) -> str:
-    lines = [f"{ICONS.get(rep['status'], '❔')} Daily AI contributor: {rep['status']}", rep.get("summary") or ""]
-    lines.append(f"Issues discovered: {rep.get('discovered', 0)} | examined: {rep.get('examined', 0)} "
-                 f"| reached AI stage: {rep.get('ai_attempts', 0)}")
-    if rep.get("selected_issue"):
-        lines.append(f"Issue: {rep['selected_issue']['url']}")
-    if rep.get("files"):
-        lines.append("Files: " + ", ".join(rep["files"]))
-    for t in rep.get("tests", []):
-        lines.append(f"Test [{t['cmd']}]: {'PASSED' if t['passed'] else 'FAILED'}")
-    lines.append(f"AI provider: {rep.get('provider') or 'n/a'}")
-    if rep.get("pr_url"):
-        lines.append(f"PR: {rep['pr_url']}")
+    lines = [
+        f"{ICONS.get(rep.get('status'), '❔')} Daily GitHub Opportunity Finder",
+        rep.get("summary") or "",
+        f"🔍 Found: {rep.get('discovered', 0)} | Checked: {rep.get('examined', 0)}",
+        "",
+    ]
+    opportunities = rep.get("opportunities", [])
+    for i, item in enumerate(opportunities, 1):
+        labels = ", ".join(item.get("labels") or []) or "No labels"
+        body = item.get("body") or "No description provided."
+        lines.extend([
+            f"{i}. {item.get('title', 'Untitled issue')}",
+            f"📦 {item.get('repository', 'Unknown repo')} | ⭐ {item.get('stars', 0)} | {item.get('language', 'Unknown')}",
+            f"🏷 {labels}", f"📝 {body}", f"🔗 {item.get('url', '')}", "",
+        ])
+    if not opportunities:
+        lines.append("Try again tomorrow; no suitable fresh issues were found today.")
+    lines.extend([
+        "💡 Open the issue, read CONTRIBUTING.md, check recent comments, then comment that you want to work on it before coding.",
+        "🤝 Discovery only: no AI, code edits, project tests, or pull requests.",
+        f"Run: {run_url}",
+    ])
     if rep.get("error"):
         lines.append(f"Error: {rep['error']}")
-    rej = rep.get("rejections", [])
-    if rej and not rep.get("pr_url"):
-        lines.append("Top rejections:")
-        counts: dict[str, int] = {}
-        for r in rej:
-            key = re.sub(r"[:(].*", "", r["reason"]).strip()[:60]
-            counts[key] = counts.get(key, 0) + 1
-        lines += [f"  {n}x {k}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1])[:6]]
-    if rep.get("dry_run"):
-        lines.append("(dry run)")
-    lines.append(f"Run: {run_url}")
-    return redact("\n".join(l for l in lines if l))
-
+    return redact("\n".join(lines))
 
 def cmd_telegram() -> int:
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
