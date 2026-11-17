@@ -20,6 +20,7 @@ on:
 # repositories uses the GH_PAT secret instead (GITHUB_TOKEN cannot do that).
 permissions:
   contents: read
+  issues: read
   actions: write # only used by the keep-alive step below
 
 concurrency:
