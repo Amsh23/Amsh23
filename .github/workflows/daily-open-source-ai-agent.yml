@@ -19,7 +19,7 @@ permissions:
   actions: write # only used by the keep-alive step below
 
 concurrency:
-  group: daily-open-source-ai-agent
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
