@@ -359,6 +359,7 @@ class ReportTests(unittest.TestCase):
                    "rejections": [{"url": "u", "reason": "vague: issue body too short"}] * 3}
             text = da.format_report(rep, "https://github.com/x/y/actions/runs/1")
         self.assertIn("Daily GitHub Opportunity Finder", text)
+        self.assertIn("Status: opportunities_found", text)
         self.assertIn("Fix parser bug", text)
         self.assertIn("acme/parser", text)
         self.assertIn("https://github.com/acme/parser/issues/3", text)
