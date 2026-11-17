@@ -43,7 +43,7 @@ TRANSIENT_STATUS = {408, 425, 429, 500, 502, 503, 504}
 MAX_PROMPT_CHARS = int(os.environ.get("AGENT_MAX_PROMPT_CHARS", "24000"))
 MAX_CANDIDATES = int(os.environ.get("AGENT_MAX_CANDIDATES", "40"))  # cheap checks, no AI
 MAX_AI_ATTEMPTS = int(os.environ.get("AGENT_MAX_AI_ATTEMPTS", "5"))  # candidates that reach the AI stage
-MIN_STARS = int(os.environ.get("AGENT_MIN_STARS", "10"))
+MIN_STARS = int((os.environ.get("AGENT_MIN_STARS") or "0").strip() or "0")
 SEEN_TTL_DAYS = 30
 TEST_TIMEOUT = int(os.environ.get("AGENT_TEST_TIMEOUT", "900"))
 
@@ -159,7 +159,7 @@ def call_openrouter(system: str, prompt: str) -> str:
     resp = request_with_retry(
         "POST", "https://openrouter.ai/api/v1/chat/completions", timeout=120, retries=3,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": os.environ.get("OPENROUTER_MODEL", "openrouter/auto"), "temperature": 0.2,
+        json={"model": (os.environ.get("OPENROUTER_MODEL") or "").strip() or "openrouter/auto", "temperature": 0.2,
               "max_tokens": 6000, "messages": [{"role": "system", "content": system},
                                                {"role": "user", "content": prompt}]})
     data = resp.json()
@@ -173,7 +173,7 @@ def call_openrouter(system: str, prompt: str) -> str:
 
 def call_gemini(system: str, prompt: str) -> str:
     key = os.environ["GEMINI_API_KEY"]
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = (os.environ.get("GEMINI_MODEL") or "").strip() or "gemini-3.8-flash"
     resp = request_with_retry(
         "POST", f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         timeout=120, retries=3, headers={"x-goog-api-key": key, "Content-Type": "application/json"},

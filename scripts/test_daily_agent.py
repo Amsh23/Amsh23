@@ -106,6 +106,33 @@ class LLMTests(unittest.TestCase):
             da.LLM([]).ask_json("s", "p", self.validate)
 
 
+
+class ProviderConfigTests(unittest.TestCase):
+    def test_openrouter_defaults_when_model_variable_is_empty(self):
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": ""}, clear=True):
+            captured = {}
+
+            def fake_request(*args, **kwargs):
+                captured.update(kwargs)
+                return FakeResp(body={"choices": [{"message": {"content": "{}"}}]})
+
+            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
+                self.assertEqual(da.call_openrouter("system", "prompt"), "{}")
+            self.assertEqual(captured["json"]["model"], "openrouter/auto")
+
+    def test_gemini_defaults_when_model_variable_is_empty(self):
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": ""}, clear=True):
+            captured = {}
+
+            def fake_request(*args, **kwargs):
+                captured["url"] = args[1]
+                return FakeResp(body={"candidates": [{"content": {"parts": [{"text": "{}"}]}}]})
+
+            with mock.patch.object(da, "request_with_retry", side_effect=fake_request):
+                self.assertEqual(da.call_gemini("system", "prompt"), "{}")
+            self.assertTrue(captured["url"].endswith("/models/gemini-3.8-flash:generateContent"))
+
+
 class FilterTests(unittest.TestCase):
     repo = {"stargazers_count": 500, "pushed_at": da.now().isoformat(), "size": 1000}
     item = {"body": "x" * 200, "labels": [{"name": "bug"}]}
@@ -120,12 +147,18 @@ class FilterTests(unittest.TestCase):
             ({**self.item, "assignee": {"login": "x"}}, self.repo, "assigned"),
             ({**self.item, "labels": [{"name": "wontfix"}]}, self.repo, "label"),
             (self.item, {**self.repo, "archived": True}, "archived"),
-            (self.item, {**self.repo, "stargazers_count": 1}, "stars"),
             (self.item, {**self.repo, "pushed_at": "2020-01-01T00:00:00Z"}, "inactive"),
         ]
         for item, repo, word in cases:
             reason = da.static_reject(item, repo)
             self.assertTrue(reason and word in reason, (word, reason))
+
+    def test_star_threshold_is_configurable_and_defaults_allow_small_repos(self):
+        small_repo = {**self.repo, "stargazers_count": 1}
+        with mock.patch.object(da, "MIN_STARS", 0):
+            self.assertIsNone(da.static_reject(self.item, small_repo))
+        with mock.patch.object(da, "MIN_STARS", 10):
+            self.assertIn("stars", da.static_reject(self.item, small_repo))
 
     def test_claimed_in_comments(self):
         self.assertIsNotNone(da.comment_reject([{"body": "I'll take this one!"}]))
@@ -408,6 +441,10 @@ class WorkflowTests(unittest.TestCase):
         steps = {s.get("name"): s for s in job["steps"]}
         self.assertEqual(steps["Telegram report"]["if"], "always()")
         self.assertTrue(steps["Run agent"]["continue-on-error"])
+        env = steps["Run agent"]["env"]
+        self.assertEqual(env["OPENROUTER_MODEL"], "${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}")
+        self.assertEqual(env["GEMINI_MODEL"], "${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}")
+        self.assertEqual(env["AGENT_MIN_STARS"], "${{ vars.AGENT_MIN_STARS || '0' }}")
 
 
 if __name__ == "__main__":
